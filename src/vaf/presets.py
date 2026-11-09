@@ -23,6 +23,7 @@ from .errors import VafError
 
 __all__ = [
     "presets_dir",
+    "preset_samples",
     "load_index",
     "preset_path",
     "install_preset",
@@ -68,6 +69,20 @@ def package_dir(name: str, explicit_dir: Optional[str] = None) -> Path:
     """Python 变体：预置目录下的同名包目录（含 __init__.py 与 register）。"""
     return presets_dir(explicit_dir) / name / name
 
+
+
+
+def preset_samples(name: str, explicit_dir: Optional[str] = None) -> List[Dict[str, Any]]:
+    """读取预置领域的全部样例输入（含样例名），供 CLI 展示与测试复用。"""
+    samples_file = samples_path(name, explicit_dir)
+    if not samples_file.exists():
+        raise VafError(f"预置领域 '{name}' 缺少 samples.yaml")
+    with open(samples_file, "r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    inputs = data.get("inputs") or []
+    if not inputs:
+        raise VafError(f"预置领域 '{name}' 样例为空")
+    return inputs
 
 
 def _write_sample_input(name: str, target: Path, explicit_dir: Optional[str]) -> None:

@@ -283,6 +283,18 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preset_sample(args: argparse.Namespace) -> int:
+    from .presets import preset_samples
+
+    samples = preset_samples(args.name, args.presets_dir)
+    print(f"== {args.name} 输入样例（{len(samples)} 个；字段定义见 vaf preset show {args.name}）==\n")
+    for sample in samples:
+        print(f"\u3010{sample.get('name', '?')}\u3011")
+        print(json.dumps(sample["input"], ensure_ascii=False, indent=2))
+        print()
+    return 0
+
+
 def cmd_scaffold(args: argparse.Namespace) -> int:
     import os
 
@@ -652,6 +664,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_show.add_argument("name")
     p_show.add_argument("--presets-dir", default=None)
     p_show.set_defaults(func=cmd_preset_show)
+
+    p_sample = preset_sub.add_parser("sample", help="查看该领域的输入样例 JSON")
+    p_sample.add_argument("name")
+    p_sample.add_argument("--presets-dir", default=None)
+    p_sample.set_defaults(func=cmd_preset_sample)
 
     p_install = preset_sub.add_parser("install", help="安装到 domains/（即被自动发现）")
     p_install.add_argument("name")

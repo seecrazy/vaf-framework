@@ -286,3 +286,13 @@ def test_install_writes_sample_input_file(tmp_path):
 def test_install_python_variant_no_sample_needed(tmp_path):
     dest = install_preset("sap_fico_journal_check", target_dir=str(tmp_path))
     assert (dest / "__init__.py").exists()
+
+
+def test_preset_samples_command_data():
+    """全部预置领域都有可展示的样例输入（python 变体亦然）。"""
+    from vaf.presets import preset_samples
+
+    for entry in load_index():
+        samples = preset_samples(entry["name"])
+        assert samples and all("input" in s for s in samples)
+        assert all({"raw_id", "source", "timestamp"} <= set(s["input"]) for s in samples)
