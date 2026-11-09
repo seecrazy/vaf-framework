@@ -15,7 +15,7 @@ from .llm.mock import ScriptedMockLLM, tool_call
 from .security.permissions import User
 
 
-def build_app(sqlite_path: Optional[str] = None, webhook_url: Optional[str] = None) -> VafApp:
+def build_app(sqlite_path: Optional[str] = None, webhook_url: Optional[str] = None, notification_hub=None) -> VafApp:
     """构建 demo 应用：自动发现 domains/ 目录下的领域 + Mock LLM（离线可跑）。"""
     import os
     import sys as _sys
@@ -29,8 +29,7 @@ def build_app(sqlite_path: Optional[str] = None, webhook_url: Optional[str] = No
     from .llm.mock import ScriptedMockLLM
     from .runtime.notification import webhook_sink
 
-    notification_hub = None
-    if webhook_url:
+    if webhook_url and notification_hub is None:
         from .runtime.notification import NotificationHub
 
         notification_hub = NotificationHub(sinks=[webhook_sink(webhook_url)])
@@ -412,6 +411,56 @@ steps:
 """
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """启动 HTTP 网关 + H5 审核台（移动端经卡片链接直达，无需安装 App）。"""
+    try:
+        import uvicorn
+    except ImportError:
+        print("缺少依赖：pip install \"vaf[api]\"（fastapi + uvicorn）", file=sys.stderr)
+        return 2
+
+    from .api.auth import ApiKeyStore
+    from .api.cards import card_sink
+    from .api.gateway import create_gateway
+    from .runtime.notification import NotificationHub
+
+    webhook = getattr(args, "webhook", None)
+    notification_hub = None
+    if webhook or args.notify_card:
+        sinks = []
+        if webhook:
+            from .runtime.notification import webhook_sink
+
+            sinks.append(webhook_sink(webhook, secret=args.notify_secret))
+        for spec in args.notify_card or []:
+            platform, _, url = spec.partition("=")
+            sinks.append(
+                card_sink(
+                    platform.strip(),
+                    url.strip(),
+                    review_base=args.review_base or f"http://{args.host}:{args.port}",
+                    secret=args.notify_secret,
+                )
+            )
+        notification_hub = NotificationHub(sinks=sinks)
+
+    app = build_app(
+        sqlite_path=args.state or ".vaf/state.db",
+        webhook_url=None,  # 卡片/webhook 已通过 notification_hub 挂接
+        notification_hub=notification_hub,
+    )
+    keys = ApiKeyStore.from_specs(args.api_key) if args.api_key else None
+    gateway = create_gateway(
+        app, keys=keys, review_base=args.review_base or f"http://{args.host}:{args.port}"
+    )
+    mode = "开放模式（仅限内网/演示）" if keys is None else f"鉴权模式（{len(args.api_key)} 把 Key）"
+    print(f"VAF 网关启动：http://{args.host}:{args.port}  （{mode}）")
+    print(f"  审核台（手机可直接访问）：http://{args.host}:{args.port}/")
+    print(f"  API 文档：http://{args.host}:{args.port}/docs")
+    uvicorn.run(gateway, host=args.host, port=args.port, log_level=args.log_level)
+    return 0
+
+
 def cmd_preset_list(args: argparse.Namespace) -> int:
     from .presets import load_index
 
@@ -529,6 +578,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="lowcode=单个 YAML 文件（默认）；code=Python 领域包（完整控制）",
     )
     scaffold.set_defaults(func=cmd_scaffold)
+
+    serve = sub.add_parser("serve", help="启动 HTTP 网关 + H5 审核台（移动接入）")
+    serve.add_argument("--host", default="0.0.0.0")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--state", default=None, help="SQLite 状态库路径（默认 .vaf/state.db）")
+    serve.add_argument("--api-key", action="append", default=None,
+                       help="API Key 配置，格式 key:user_id:role1,role2（可重复；不配置=开放模式）")
+    serve.add_argument("--notify-card", action="append", default=None,
+                       help="消息卡片推送：dingtalk=URL / wecom=URL / feishu=URL（可重复）")
+    serve.add_argument("--notify-secret", default=None, help="钉钉/飞书机器人加签密钥")
+    serve.add_argument("--webhook", default=None, help="原始 JSON webhook（与 --notify-card 可同时用）")
+    serve.add_argument("--review-base", default=None, help="卡片/审核台对外可达基址（默认 http://host:port）")
+    serve.add_argument("--log-level", default="info")
+    serve.set_defaults(func=cmd_serve)
 
     preset = sub.add_parser("preset", help="预置领域库（0 分钟即用）")
     preset_sub = preset.add_subparsers(dest="action", required=True)

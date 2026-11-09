@@ -32,8 +32,8 @@ class RolePermissionMap:
     def __init__(self) -> None:
         self._map: Dict[str, Set[str]] = {
             "admin": set(self.ALL),
-            "operator": {Permission.RUN_PIPELINE.value, Permission.SUBMIT_REVIEW.value},
-            "reviewer": {Permission.SUBMIT_REVIEW.value, Permission.REVIEW_APPROVE.value},
+            "operator": {Permission.RUN_PIPELINE.value, Permission.SUBMIT_REVIEW.value, Permission.AUDIT_READ.value},
+            "reviewer": {Permission.SUBMIT_REVIEW.value, Permission.REVIEW_APPROVE.value, Permission.AUDIT_READ.value},
             "auditor": {Permission.AUDIT_READ.value, Permission.DATA_EXPORT.value},
             "config_admin": {Permission.CONFIG_WRITE.value},
         }

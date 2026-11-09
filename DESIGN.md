@@ -1,4 +1,4 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.4 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.5 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
@@ -536,3 +536,23 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 - `try`：离线体验——`samples.yaml`（样例输入 + 按技能名路由的脚本化响应，PresetResponder）
   驱动 ScriptedMockLLM，零外部依赖、零副作用；
 - 目录解析顺序：--presets-dir → VAF_PRESETS_DIR → 仓库根 presets/。
+
+---
+
+## 二十三、移动接入层（V2.5，`vaf/api/`）
+
+手机**无需安装 App** 即可完成审核/澄清：HTTP 网关 + 消息卡片 + H5 审核台（PWA 可添加到主屏）。
+
+- **网关**（`gateway.py`，FastAPI，OpenAPI 自动生成 /docs）：run 提交/列表/inspect、
+  澄清提交、待审列表、审批决策、预置目录、健康检查；
+- **鉴权**（`auth.py`）：`X-VAF-API-Key` → RBAC 用户（`key:user:roles` 配置），
+  未配置 Key 为开放模式（合成 admin，仅限内网/演示，/health 明示）；
+  PermissionDenied→403、VafError→400 全局映射；
+- **消息卡片**（`cards.py`）：钉钉 actionCard（timestamp 毫秒 + HMAC-SHA256 加签查询参数）、
+  企微 markdown、飞书 interactive（timestamp 秒 + 签名入 body）——按钮直达审核台链接；
+  事件 payload 携带 payload_digest/required_role/deadline；
+- **H5 审核台**（`static/review.html`）：移动优先单文件 PWA，hash 路由
+  （#/ 待办双列、#/task/{id} 审批、#/run/{id}/clarify 澄清问答），Key 存 localStorage；
+- **CLI**：`vaf serve --api-key ... --notify-card dingtalk=URL ... --review-base ...`；
+- 可选依赖：`pip install "vaf[api]"`（fastapi+uvicorn），核心框架零新增硬依赖。
+

@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.4.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **202 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.5.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **218 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -82,6 +82,18 @@
 - presets.py 支持 python 变体（preset_kind/package_dir、try 动态导入注册、
   install 复制包目录、index 校验放宽）；
 - 测试 196 → **202**。
+
+
+### 2026-11-09（第六批）· V2.5.0 —— 移动接入层（手机零 App 使用）
+- HTTP 网关（FastAPI + OpenAPI）：runs/clarifications/reviews/presets/health 端点，
+  X-VAF-API-Key→RBAC 鉴权（开放模式仅限内网）、403/400 全局异常映射；
+- 消息卡片：钉钉(actionCard+加签)/企微(markdown)/飞书(interactive+签名)，
+  卡片按钮直达审核台；review_requested 事件增强 payload_digest/required_role；
+- H5 审核台：移动优先 PWA 单文件（待办列表/审批/澄清问答，Key 存 localStorage）；
+- CLI vaf serve（--api-key/--notify-card/--notify-secret/--webhook/--review-base）；
+- operator/reviewer 默认角色补 AUDIT_READ（审核台读权限）；
+- 真实服务全流程 curl 冒烟通过（提交→澄清→待审→批准→emergency）；
+- 测试 202 → **218**（test_api.py 17 个：鉴权/RBAC/闭环/卡片格式/OpenAPI/H5）。
 
 ## 测试基线
 

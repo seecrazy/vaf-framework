@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a2233">
+<title>VAF 审核台</title>
+<style>
+  :root{--bg:#f4f6fa;--card:#fff;--ink:#1c2333;--sub:#6b7385;--line:#e6e9f0;
+        --brand:#2f5cff;--ok:#0f9d58;--bad:#d93025;--warn:#b26a00}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"PingFang SC","Segoe UI",Roboto,sans-serif;background:var(--bg);
+       color:var(--ink);-webkit-tap-highlight-color:transparent;padding-bottom:40px}
+  header{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,#1a2233,#2f3d63);
+         color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
+  header .logo{font-weight:700;font-size:17px}
+  header .key{margin-left:auto;font-size:12px;opacity:.85;cursor:pointer;
+              border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:4px 8px}
+  main{padding:12px;max-width:640px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+  .card h3{font-size:15px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;
+       border-bottom:1px dashed var(--line);font-size:13px}
+  .row:last-child{border:none}
+  .row .k{color:var(--sub);flex:0 0 auto}
+  .row .v{text-align:right;word-break:break-all}
+  .tag{font-size:11px;border-radius:6px;padding:2px 7px;font-weight:600}
+  .t-red{background:#fdeceb;color:var(--bad)} .t-org{background:#fef3e2;color:var(--warn)}
+  .t-grn{background:#e6f4ea;color:var(--ok)} .t-blu{background:#e8eeff;color:var(--brand)}
+  .btn{display:block;width:100%;border:none;border-radius:12px;padding:13px;font-size:15px;
+       font-weight:600;margin-top:10px;cursor:pointer}
+  .b-ok{background:var(--ok);color:#fff}.b-bad{background:var(--bad);color:#fff}
+  .b-line{background:#fff;border:1.5px solid var(--line);color:var(--ink)}
+  textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:10px;
+       padding:10px;font-size:14px;margin-top:8px;font-family:inherit}
+  .empty{text-align:center;color:var(--sub);padding:40px 0;font-size:14px}
+  .back{color:var(--brand);font-size:14px;cursor:pointer;margin-bottom:8px;display:inline-block}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#1c2333;
+         color:#fff;font-size:13px;border-radius:10px;padding:9px 16px;opacity:0;
+         transition:opacity .25s;pointer-events:none;max-width:90vw}
+  .toast.show{opacity:.95}
+  pre{background:#0f1524;color:#c8d3f5;border-radius:10px;padding:10px;font-size:11px;
+      overflow:auto;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">VAF 审核台</div>
+  <div class="key" id="keyBadge" onclick="askKey()">🔑 未设置</div>
+</header>
+<main id="view"></main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (h) => { const d = document.createElement('div'); d.innerHTML = h.trim(); return d.firstChild; };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function apiKey(){ return localStorage.getItem('vaf_key') || ''; }
+function askKey(){
+  const k = prompt('输入 API Key（开放模式可直接留空）：', apiKey());
+  if (k !== null){ localStorage.setItem('vaf_key', k.trim()); render(); }
+}
+async function api(path, opts={}){
+  opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  if (apiKey()) opts.headers['X-VAF-API-Key'] = apiKey();
+  const r = await fetch(path, opts);
+  if (r.status === 401){ askKey(); throw new Error('鉴权失败'); }
+  const data = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+const statusTag = (s)=>({
+  waiting_review:'<span class="tag t-red">待审核</span>',
+  waiting_input:'<span class="tag t-org">待澄清</span>',
+  succeeded:'<span class="tag t-grn">已完成</span>',
+  failed:'<span class="tag t-red">失败</span>',
+  running:'<span class="tag t-blu">运行中</span>',
+}[s]||`<span class="tag t-blu">${esc(s)}</span>`);
+
+async function pageHome(){
+  const [reviews, runs] = await Promise.all([
+    api('/api/v1/reviews/pending'),
+    api('/api/v1/runs?status=waiting_input'),
+  ]);
+  const v = document.getElementById('view'); v.innerHTML = '';
+  if (!reviews.length && !runs.length)
+    v.appendChild($('<div class="empty">暂无待办 —— 收到卡片推送后会出现在这里</div>'));
+  reviews.forEach(t => {
+    const digest = Object.entries(t.payload_digest||{}).map(([k,val]) =>
+      `<div class="row"><span class="k">${esc(k)}</span><span class="v">${esc(String(val).slice(0,80))}</span></div>`).join('');
+    v.appendChild($(`<div class="card">
+      <h3>${statusTag('waiting_review')} ${esc(t.pipeline)} · ${esc(t.step)}</h3>
+      <div class="row"><span class="k">任务</span><span class="v">${esc(t.task_id)}</span></div>
+      ${digest}
+      <div class="row"><span class="k">run</span><span class="v">${esc(t.run_id)}</span></div>
+      <button class="btn b-line" onclick="location.hash='#/task/${esc(t.task_id)}'">查看并处理</button>
+    </div>`));
+  });
+  runs.filter(r => r.pending_clarification).forEach(r => {
+    v.appendChild($(`<div class="card">
+      <h3>${statusTag('waiting_input')} ${esc(r.pipeline)} · ${esc(r.pending_clarification.round_no)} 轮</h3>
+      ${r.pending_clarification.questions.map(q=>`<div class="row"><span class="k">问</span><span class="v">${esc(q)}</span></div>`).join('')}
+      <button class="btn b-line" onclick="location.hash='#/run/${esc(r.request_id)}/clarify'">去回答</button>
+    </div>`));
+  });
+}
+
+async function pageTask(id){
+  const list = await api('/api/v1/reviews/pending');
+  const t = list.find(x => x.task_id === id);
+  const v = document.getElementById('view'); v.innerHTML = '';
+  if (!t){ v.appendChild($('<div class="empty">任务不存在或已处理</div>')); return; }
+  const digest = Object.entries(t.payload_digest||{}).map(([k,val]) =>
+    `<div class="row"><span class="k">${esc(k)}</span><span class="v">${esc(val)}</span></div>`).join('');
+  v.appendChild($(`<span class="back" onclick="location.hash='#/'">← 返回</span>
+    <div class="card">
+      <h3>${statusTag('waiting_review')} ${esc(t.pipeline)} · ${esc(t.step)}</h3>
+      <div class="row"><span class="k">run</span><span class="v">${esc(t.run_id)}</span></div>
+      ${digest}
+      <textarea id="comment" rows="2" placeholder="审核意见（可选）"></textarea>
+      <button class="btn b-ok" id="btnOk">✓ 批准</button>
+      <button class="btn b-bad" id="btnNo">✕ 驳回</button>
+    </div>`));
+  const decide = async (decision) => {
+    try{
+      const h = await api(`/api/v1/reviews/${id}/decision`, {
+        method:'POST', body: JSON.stringify({decision, comment: document.getElementById('comment').value})});
+      toast(`已${decision==='approved'?'批准':'驳回'}：run ${h.status}`);
+      location.hash = '#/';
+    }catch(e){ toast('失败：'+e.message); }
+  };
+  document.getElementById('btnOk').onclick = () => decide('approved');
+  document.getElementById('btnNo').onclick = () => decide('rejected');
+}
+
+async function pageClarify(runId){
+  const run = await api(`/api/v1/runs/${runId}`);
+  const v = document.getElementById('view'); v.innerHTML = '';
+  const pc = run.pending_clarification;
+  if (!pc){ v.appendChild($('<div class="empty">该 run 不在等待澄清</div>')); return; }
+  const inputs = pc.questions.map((q,i)=>
+    `<div style="margin-top:12px;font-size:13px">${i+1}. ${esc(q)}</div>
+     <input type="text" id="a${i}" placeholder="输入回答">`).join('');
+  v.appendChild($(`<span class="back" onclick="location.hash='#/'">← 返回</span>
+    <div class="card">
+      <h3>${statusTag('waiting_input')} ${esc(run.pipeline)} · 第 ${pc.round_no} 轮澄清</h3>
+      ${inputs}
+      <button class="btn b-ok" id="btnSubmit">提交回答</button>
+      <pre>${esc(JSON.stringify({steps: run.steps.map(s=>`${s.step}:${s.status}`), flags: run.falsification_flags}, null, 1))}</pre>
+    </div>`));
+  document.getElementById('btnSubmit').onclick = async () => {
+    const answers = {};
+    pc.questions.forEach((q,i) => answers[q] = document.getElementById('a'+i).value || '（未填写）');
+    try{
+      const h = await api(`/api/v1/runs/${runId}/clarifications`, {
+        method:'POST', body: JSON.stringify({answers})});
+      toast('已提交：run ' + h.status);
+      location.hash = '#/';
+    }catch(e){ toast('失败：'+e.message); }
+  };
+}
+
+async function render(){
+  document.getElementById('keyBadge').textContent = apiKey() ? '🔑 已设置' : '🔑 未设置';
+  const hash = location.hash || '#/';
+  const v = document.getElementById('view');
+  try{
+    if (hash.startsWith('#/task/')) return await pageTask(hash.slice(7));
+    if (hash.startsWith('#/run/') && hash.endsWith('/clarify')) return await pageClarify(hash.slice(6, -8));
+    return await pageHome();
+  }catch(e){ v.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>

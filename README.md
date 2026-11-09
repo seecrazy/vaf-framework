@@ -1,4 +1,4 @@
-# VAF 2.4 — 垂直领域 Agent 通用可靠性框架
+# VAF 2.5 — 垂直领域 Agent 通用可靠性框架
 
 Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输出可校验」的垂直领域（医疗分诊、投研、信贷审批、运维排障、工单质检……）提供**生产级可靠性骨架**。框架零领域知识；**接入一个领域可以只写一个 YAML 文件（V2.2 零代码路径），也可以用四层 Python API 做完整控制，两者可在同一 Pipeline 混用。**
 
@@ -13,7 +13,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
 
 vaf demo        # 离线演示：澄清回路 → 审核 → 路由探测 → 零代码领域 → 评估门禁
-pytest          # 202 个用例（~1s），零外部依赖
+pytest          # 218 个用例（~1s），零外部依赖
 ```
 
 ## 0 分钟使用：预置领域库（V2.3 推荐）
@@ -166,6 +166,19 @@ vaf scaffold <domain_name>                            # 生成领域包模板
 
 `vaf run/inspect` 默认自动发现 `domains/` 目录下的领域包；第三方领域包通过 pip 安装并在
 `pyproject.toml` 声明 entry_points 组 `vaf.domains` 即被自动发现。
+
+## 手机使用（零 App 安装）
+
+```bash
+pip install "vaf[api]"
+vaf serve --port 8000 \
+  --api-key "k_op:ops:operator" --api-key "k_rev:doc:reviewer" \
+  --notify-card dingtalk=https://oapi.dingtalk.com/robot/send?access_token=xxx \
+  --notify-secret SECxxx
+```
+
+手机侧三步：群卡片点【去处理】→ 打开 H5 审核台（可添加到主屏）→ 批准/驳回或回答澄清。
+原生 App/小程序接入同一套 REST API（OpenAPI 文档在 `/docs`）。
 
 ## 示例领域（可运行）
 

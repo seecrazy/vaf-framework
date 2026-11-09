@@ -25,6 +25,44 @@ NOTIFY_EVENT_TYPES = (
 
 Sink = Callable[[str, Dict[str, object]], None]
 
+# 内网直连 opener：显式绕过系统代理（macOS/企业环境常见拦截源）
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def post_json(
+    url: str,
+    payload: bytes,
+    *,
+    timeout_s: float = 3.0,
+    retries: int = 2,
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, str]] = None,
+    on_success: Optional[Callable[[], None]] = None,
+    on_failure: Optional[Callable[[Exception], None]] = None,
+) -> bool:
+    """带重试的 JSON POST（webhook / 消息卡片共用）。返回是否成功。"""
+    if params:
+        from urllib.parse import urlencode
+
+        url = f"{url}?{urlencode(params)}"
+    req_headers = {"Content-Type": "application/json"}
+    req_headers.update(headers or {})
+    last_error: Optional[Exception] = None
+    for _attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, data=payload, headers=req_headers, method="POST")
+            with _opener.open(req, timeout=timeout_s) as resp:
+                if 200 <= resp.status < 300:
+                    if on_success is not None:
+                        on_success()
+                    return True
+                raise RuntimeError(f"HTTP status {resp.status}")
+        except Exception as exc:  # noqa: BLE001 - 推送失败不阻塞主流程
+            last_error = exc
+    if on_failure is not None:
+        on_failure(last_error)
+    return False
+
 
 def webhook_sink(
     url: str,
@@ -38,31 +76,25 @@ def webhook_sink(
     metrics = default_metrics()
     delivered = metrics.counter("webhook_delivered_total", "webhook 成功投递")
     failed = metrics.counter("webhook_failed_total", "webhook 投递失败")
-    # 内网 webhook 直连：显式绕过系统代理（macOS/企业环境常见拦截源）
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def sink(event_type: str, payload: Dict[str, object]) -> None:
         body = json.dumps(
             {"event": event_type, "payload": payload}, ensure_ascii=False, default=str
         ).encode("utf-8")
-        req_headers = {"Content-Type": "application/json"}
-        req_headers.update(headers or {})
+        req_headers = dict(headers or {})
         if secret:
             req_headers["X-VAF-Signature"] = hmac.new(
                 secret.encode(), body, hashlib.sha256
             ).hexdigest()
-        last_error: Optional[Exception] = None
-        for _attempt in range(retries + 1):
-            try:
-                req = urllib.request.Request(url, data=body, headers=req_headers, method="POST")
-                with opener.open(req, timeout=timeout_s) as resp:
-                    if 200 <= resp.status < 300:
-                        delivered.inc()
-                        return
-                    raise RuntimeError(f"webhook status {resp.status}")
-            except Exception as exc:  # noqa: BLE001 - 推送失败不阻塞主流程
-                last_error = exc
-        failed.inc(url=url, error=str(last_error)[:80])
+        post_json(
+            url,
+            body,
+            timeout_s=timeout_s,
+            retries=retries,
+            headers=req_headers,
+            on_success=lambda: delivered.inc(),
+            on_failure=lambda exc: failed.inc(url=url, error=str(exc)[:80]),
+        )
 
     return sink
 

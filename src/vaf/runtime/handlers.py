@@ -174,9 +174,13 @@ class HumanReviewHandler(StepHandler):
         engine._emit(
             "review_requested",
             request_id=ctx.state.request_id,
+            pipeline=ctx.state.pipeline,
             step=step.name,
             task_id=task.task_id,
             fields=step.review_fields,
+            payload_digest=task.payload_digest,
+            required_role=step.required_role,
+            deadline=task.deadline,
         )
         return True
 
@@ -275,6 +279,7 @@ class InteractionStepHandler(StepHandler):
         engine._emit(
             "clarification_requested",
             request_id=ctx.state.request_id,
+            pipeline=ctx.state.pipeline,
             step=step.name,
             round_no=ctx.state.pending_clarification.round_no,
             questions=questions,
