@@ -203,11 +203,14 @@ def render_template(text: str, namespace: Dict[str, Any]) -> str:
 
 
 def _template_namespace(ctx: SkillContext, config_keys: List[str]) -> Dict[str, Any]:
+    # enriched：首条预处理条目的增强数据（文档抽取/推算结果等确定性产物）
+    enriched: Dict[str, Any] = ctx.preprocessed[0].enriched_data if ctx.preprocessed else {}
     ns: Dict[str, Any] = {
         "input": ctx.domain_input,
         "upstream": dict(ctx.upstream_outputs),
         "clarifications": ctx.clarifications,
         "anomalies": ctx.anomalies_text(),
+        "enriched": enriched,
     }
     if config_keys:
         if ctx.config is None:
@@ -354,6 +357,16 @@ def _node_truncate(spec: Dict[str, Any]):
     return builtin_nodes.LengthTruncateNode(spec["field"], max_chars=int(spec.get("max_chars", 2000)))
 
 
+def _node_document_extract(spec: Dict[str, Any]):
+    from .preprocessor.document import DocumentExtractNode
+
+    return DocumentExtractNode(
+        field=spec.get("field", "document_url"),
+        output_field=spec.get("output_field", "document_text"),
+        max_chars=int(spec.get("max_chars", 100000)),
+    )
+
+
 def _node_scorer(spec: Dict[str, Any]):
     return builtin_nodes.StaticScorerNode(
         spec["field"], dict(spec.get("map", {})), default_score=float(spec.get("default", 0))
@@ -367,6 +380,7 @@ NODE_FACTORIES: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     "hash_dedup": _node_dedup,
     "pii_detection": _node_pii,
     "length_truncate": _node_truncate,
+    "document_extract": _node_document_extract,
     "static_scorer": _node_scorer,
 }
 
@@ -570,6 +584,9 @@ def load_domain_dict(
         raise VafError(f"技能名重复：{names}")
 
     pipeline = pipeline_from_dict(dict(spec.pipeline))
+    # 声明式预处理接线：spec.preprocessor 非空即挂到 pipeline（引擎据此触发执行）
+    if spec.preprocessor is not None and not pipeline.preprocessor:
+        pipeline = pipeline.model_copy(update={"preprocessor": "lowcode-preprocessor"})
     audit_names = [s.name for s in spec.skills if s.type == "audit"]
     if audit_names and not pipeline.audit_skill:
         pipeline = pipeline.model_copy(update={"audit_skill": audit_names[0]})

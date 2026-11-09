@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.6.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **227 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.7.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **241 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -104,6 +104,17 @@
 - 修复：低代码枚举字段字符串默认值未转枚举成员（序列化告警）；
 - 测试 218 → **227**（本地 OpenAI 兼容假服务全链路：请求格式/鉴权头/流式 SSE/
   工具调用解析/429 重试/env 装配/零代码领域经真实 HTTP 跑通）。
+
+
+### 2026-11-09（第八批）· V2.7.0 —— 输入形态扩展：不止 JSON
+- 非结构化文档入口：DocumentExtractNode（http(s)/本地路径/data:URL；html 剥标签含内容嗅探；
+  二进制格式报错并引导注入 extractor）+ lowcode 节点工厂 document_extract +
+  模板插值暴露 {{ enriched.字段 }}（预处理增强进提示词）；
+- 新预置 document_review（document_url → 抽取 → 要点/风险分级），样例用 data:URL 自包含离线可跑；
+- **修复 V2.2 起 bug**：低代码 loader 未把 spec.preprocessor 接到 pipeline.preprocessor，
+  低代码领域的声明式预处理从未被执行——已接线并加引擎级回归测试锁定；
+- CLI 输入多格式：.json（对象/数组=批量）、.yaml/.yml、.csv（表头逐行=批量，request_id 加序号）；
+- 测试 230 → **241**。
 
 ## 测试基线
 

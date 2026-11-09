@@ -53,3 +53,12 @@ presets:
       冲销凭证类型 AB。跨行借贷求和超出声明式预处理能力 → 本预置为
       Python 变体（自定义聚合校验节点的教学案例）。
     variants: [python]
+
+  - name: document_review
+    description: 通用文档审查（document_url → 确定性抽取 → 要点/风险分级）
+    tags: [document, intake, lowcode]
+    knowledge: |
+      非结构化入口演示：http(s)/本地路径/data:URL → 预处理 document_extract
+      抽取文本 → {{ enriched.document_text }} 进提示词。纯文本类与 html 内置
+      支持；PDF/DOCX/扫描件走 Python 注入 extractor（document.py 有示例）。
+    variants: [lowcode]

@@ -1,4 +1,4 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.6 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.7 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
@@ -182,7 +182,7 @@ SkillOutput (pydantic, extra=forbid)
 
 ### 5.4 内置组件库（`preprocessor/builtin.py`）
 
-`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）。
+`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）、**`DocumentExtractNode`（V2.7：http(s)/本地/data: URL 文档文本抽取，html 剥标签；PDF/DOCX 注入自定义 extractor）**。
 
 ### 5.5 执行顺序
 
@@ -530,6 +530,7 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 | financial_report_extract 公告抽取 | 定期报告披露格式、来源分级 L1/L2/L3、快报与年报口径差异、缺项必须 data_gaps | 零代码 YAML |
 | legal_case_assessment 民商事案件评估 | 民事证明标准"高度盖然性"（最高法证据规定）、民法典 188 条 3 年时效、劳动仲裁前置与 1 年时效（27 条）、保全/公告送达策略；输出强制"不构成法律意见" | 零代码 YAML |
 | investment_research_note 投资研究评审 | 扣非净利与经营现金流交叉验证、商誉年度减值测试（CAS 8）、估值方法适用边界（DCF/PE/PB/EV-EBITDA/PS）；合规设计：不做投资建议、输出强制免责标签 | 零代码 YAML |
+| document_review 通用文档审查 | 非结构化入口：document_url（http/本地/data:URL）→ 预处理确定性抽取 → {{ enriched.document_text }} 进提示词；纯文本/html 内置，PDF 走注入 extractor | 零代码 YAML |
 | sap_fico_journal_check 总账凭证检查 | 借贷合计强制平衡、损益科目缺成本对象→KI235 类报错（FI/CO 集成）、冲销凭证类型 AB；**跨行求和超出声明式预处理能力 → Python 变体作为"何时必须写代码"教学案例** | Python 包 |
 
 机制：

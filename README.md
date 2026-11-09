@@ -171,6 +171,16 @@ output = quick_output(
 )
 ```
 
+## 输入形态：不止 JSON
+
+- **Python API**：直接传 dict 或模型实例（JSON 只是传输表示）；
+- **CLI**：`--input` 支持 `.json`（对象或**数组=批量**）、`.yaml/.yml`、`.csv`（表头字段名，每行一个输入，批量跑）；
+- **非结构化文档**：输入给一个 `document_url`（http(s) / 本地路径 / `data:text/plain;base64,...`），
+  预处理 `document_extract` 节点确定性抽取文本，技能用 `{{ enriched.document_text }}` 引用——
+  见预置 `document_review`（PDF/DOCX/扫描件在 Python 路径注入 extractor，见 `preprocessor/document.py` 示例）。
+
+设计边界：非结构化内容在**入口**被规范化为结构化，进门之后全链路契约校验/幂等/快照/证伪照常生效。
+
 ## 生产化：接入真实 LLM（零代码）
 
 OpenAI 的 `/chat/completions` 协议已是事实标准（火山方舟 / OpenAI / DeepSeek / GLM /
@@ -219,7 +229,7 @@ vaf serve --port 8000 \
 vaf demo                                     # 离线全流程演示
 vaf preset list / show / try / install       # 预置领域库
 vaf scaffold <name> [--style code]           # 生成领域模板（默认低代码 YAML）
-vaf run --domain <d> --input case.json [--request-id r1] [--webhook URL]
+vaf run --domain <d> --input case.json|form.yaml|rows.csv [--request-id r1] [--webhook URL]   # yaml/csv（表头逐行）/json 数组=批量
 vaf inspect <run_id> [--json]                # run 排障一屏看清（步骤/路由/暂停点/事件）
 vaf review list / approve <task_id> / reject <task_id> --reviewer <user>
 vaf clarify submit <run_id> answers.json

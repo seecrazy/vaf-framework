@@ -6,6 +6,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+
+import yaml
 from pathlib import Path
 import json
 import sys
@@ -186,24 +189,52 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_input_payloads(path: str) -> List[dict]:
+    """按扩展名加载输入：.json（对象或数组=批量）/ .yaml .yml / .csv（表头+逐行=批量）。"""
+    import csv
+    import json as _json
+
+    suffix = os.path.splitext(path)[1].lower()
+    with open(path, "r", encoding="utf-8-sig") as fh:
+        if suffix in (".yaml", ".yml"):
+            data = yaml.safe_load(fh)
+            payloads = data if isinstance(data, list) else [data]
+        elif suffix == ".csv":
+            rows = list(csv.DictReader(fh))
+            if not rows:
+                raise SystemExit(f"CSV 无数据行：{path}")
+            payloads = [dict(r) for r in rows]
+        else:
+            data = _json.load(fh)
+            payloads = data if isinstance(data, list) else [data]
+    for i, item in enumerate(payloads, start=1):
+        if not isinstance(item, dict):
+            raise SystemExit(f"输入第 {i} 项不是对象（{path}）")
+    return payloads
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     app = build_app(
         sqlite_path=args.state or None,
         webhook_url=getattr(args, "webhook", None),
         **_llm_kwargs(args),
     )
-    with open(args.input, "r", encoding="utf-8") as fh:
-        payload = json.load(fh)
-    request_id = args.request_id or payload.get("raw_id", "") or "cli-run"
-    handle = app.run(args.domain, payload, request_id)
-    print(json.dumps(handle.to_dict(), ensure_ascii=False, indent=2, default=str))
-    if handle.pending_clarification:
-        print(
-            "run 等待澄清，提交：vaf clarify submit "
-            f"{request_id} answers.json"
-        )
-    if handle.pending_review_task:
-        print(f"run 等待审核，任务：{handle.pending_review_task}")
+    payloads = load_input_payloads(args.input)
+    batch = len(payloads) > 1
+    for index, payload in enumerate(payloads, start=1):
+        base = args.request_id or payload.get("raw_id", "") or "cli-run"
+        request_id = f"{base}-{index}" if batch else base
+        handle = app.run(args.domain, payload, request_id)
+        print(json.dumps(handle.to_dict(), ensure_ascii=False, indent=2, default=str))
+        if handle.pending_clarification:
+            print(
+                "run 等待澄清，提交：vaf clarify submit "
+                f"{request_id} answers.json"
+            )
+        if handle.pending_review_task:
+            print(f"run 等待审核，任务：{handle.pending_review_task}")
+    if batch:
+        print(f"批量完成：{len(payloads)} 个输入（request_id 已加序号后缀）")
     return 0
 
 

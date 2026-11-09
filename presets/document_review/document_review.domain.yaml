@@ -1,0 +1,69 @@
+# =============================================================================
+# 预置领域：document_review 通用文档审查（零代码 + 文档入口，V2.7）
+# -----------------------------------------------------------------------------
+# 演示非结构化入口：输入只给一个 document_url（http(s) / 本地路径 / data: URL），
+# 预处理 document_extract 节点确定性抽取文本 → 技能引用 {{ enriched.document_text }}
+# 进行要点摘要与风险分级——"上传文档 → 结论"的最小完整链路。
+# 内置支持纯文本类（txt/md/csv/json/log）与 html（自动剥标签）；
+# PDF/DOCX/扫描件请在 Python 路径注入 extractor（见 preprocessor/document.py 尾示例）。
+# =============================================================================
+domain: document_review
+version: "1.0.0"
+data_classification: internal
+
+input:
+  fields:
+    - {name: document_url, type: str, required: true, description: "文档来源：http(s) URL / 本地路径 / data:text/plain;base64,..."}
+    - {name: doc_kind, type: str, enum: [contract, report, notice, other], default: other, description: 文档类型（引导审查侧重点）}
+
+outputs:
+  review:
+    conclusion_enum: [low_risk, medium_risk, high_risk, needs_expert_review]
+    fields:
+      - {name: summary, type: str, description: 三句话以内要点摘要}
+      - {name: key_points, type: list, description: 关键条款/数据点}
+      - {name: concerns, type: list, description: 风险或疑点}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [document_url]}
+  enrichers:
+    - {type: document_extract, field: document_url, output_field: document_text, max_chars: 20000}
+
+skills:
+  - name: review_doc
+    type: analysis
+    output: review
+    prompt: |
+      文档类型：{{ input.doc_kind }}。抽取文本：
+      {{ enriched.document_text }}
+
+      审查规则：
+      1. 先给三句话以内摘要（summary）；
+      2. 提取关键条款/数据点（key_points，逐条引用原文短语）；
+      3. 发现违约金过高/单方权利/期限异常/数字矛盾等 → 写入 concerns；
+      4. 有实质风险 → medium_risk 或 high_risk（按严重度）；
+         文本过短或占位内容 → insufficient_data 并追问完整文档；
+      5. 判断拿不准 → needs_expert_review（不要硬猜）。
+
+  - name: review_guard
+    type: audit
+    output: review
+    veto_when: "output.conclusion in ['low_risk', 'high_risk'] and output.confidence != 'high'"
+    downgrade_to: needs_expert_review
+    confidence_after: medium
+
+falsification_checkers: []
+
+pipeline:
+  name: document_review
+  domain: document_review
+  version: "1.0.0"
+  steps:
+    - name: review_doc
+      type: skill
+      skill: review_doc
+      on_schema_fail: retry
+      max_retries: 2
+
+result_from: review_doc

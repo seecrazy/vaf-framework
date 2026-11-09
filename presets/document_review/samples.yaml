@@ -1,0 +1,34 @@
+inputs:
+- name: 服务协议（自动续约 + 高额违约金 → 风险）
+  input:
+    raw_id: dr-sample-1
+    source: doc_upload
+    timestamp: '2026-11-09T10:00:00'
+    doc_kind: contract
+    document_url: data:text/plain;base64,5pyN5Yqh5Y2P6K6u77yI6IqC6YCJ77yJCuesrCA1IOadoSDmnI3liqHmnJ/pmZDvvJrmnKzljY/orq7oh6rnrb7nvbLkuYvml6XotbcgMTIg5Liq5pyI77yM5pyf5ruh5YmNIDMwIOaXpeacquS5pumdouW8guiuruWImeiHquWKqOe7ree6piAxMiDkuKrmnIjjgIIK56ysIDgg5p2hIOi/nee6pui0o+S7u++8muS5meaWuemAvuacn+S7mOasvueahO+8jOavj+aXpeaMieacquS7mOasvumhueeahCAzJSDmlK/ku5jov53nuqbph5HvvJvntK/orqHkuI3otoXov4fmnKrku5jmrL7pobnnmoQgMjAwJeOAggrnrKwgMTIg5p2hIOS6ieiuruino+WGs++8muaPkOS6pOeUsuaWueaJgOWcqOWcsOacieeuoei+luadg+eahOS6uuawkeazlemZouivieiuvOino+WGs+OAggo=
+- name: 经营简报（应收激增 → 疑点）
+  input:
+    raw_id: dr-sample-2
+    source: doc_upload
+    timestamp: '2026-11-09T10:01:00'
+    doc_kind: report
+    document_url: data:text/plain;base64,5a2j5bqm57uP6JCl566A5oql77yI6IqC6YCJ77yJClEzIOiQpeaUtiAyLjMg5Lq/5YWD77yM546v5q+U5aKe6ZW/IDgl77yb57uP6JCl546w6YeR5rWB5YeA6aKdIDAuNCDkur/lhYPvvIzkvY7kuo7lh4DliKnmtqYgMC42IOS6v+WFg++8mwrlupTmlLbotKbmrL7kvZnpop0gMS4xIOS6v+WFg++8jOi+g+S4iuWto+W6puacqyAwLjcg5Lq/5YWD5aKe6ZW/IDU3Je+8jOS4u+imgeWboOWkp+WuouaIt+i0puacn+eUsSA2MCDlpKnosIPmlbTkuLogOTAg5aSp44CCCuaXoOaWsOWinuWvueWkluaLheS/neOAggo=
+responses:
+  review_doc:
+  - "{\n \"conclusion\": \"high_risk\", \"confidence\": \"high\",\n \"summary\": \"12 个月服务协议，含自动续约与高额逾期违约金条款，争议由甲方所在地法院管辖。\"\
+    ,\n \"key_points\": [\"期满前 30 日未异议自动续约\", \"逾期违约金日 3%、上限 200%\", \"甲方所在地管辖\"],\n \"concerns\": [\"\
+    违约金过分高于常见损失口径\", \"自动续约无退出提示安排\"],\n \"findings\": [\n  {\"finding_id\": \"f1\", \"claim\": \"违约金日\
+    \ 3% 明显过高\", \"evidence_refs\": [\"ev1\"]},\n  {\"finding_id\": \"f2\", \"claim\": \"自动续约条款风险\", \"\
+    evidence_refs\": [\"ev2\"]}\n ],\n \"evidence\": [\n  {\"ev_id\": \"ev1\", \"content\": \"每日按未付款项的\
+    \ 3% 支付违约金；累计不超过未付款项的 200%\", \"source_ref\": \"s1\"},\n  {\"ev_id\": \"ev2\", \"content\": \"期满前\
+    \ 30 日未书面异议则自动续约 12 个月\", \"source_ref\": \"s1\"}\n ],\n \"sources\": [{\"ref_id\": \"s1\", \"grade\"\
+    : \"L1\", \"label\": \"文档抽取文本\"}],\n \"falsification\": [\n  {\"signal\": \"文档更新\", \"threshold\"\
+    : \"签署补充协议\", \"consequence\": \"重新评估\", \"check_frequency\": \"event_driven\"}\n ]\n}"
+  - "{\n \"conclusion\": \"medium_risk\", \"confidence\": \"high\",\n \"summary\": \"Q3 营收环比 +8%，但应收账款激增\
+    \ 57% 且经营现金流低于净利润。\",\n \"key_points\": [\"营收 2.3 亿，环比 +8%\", \"应收 1.1 亿，较上季 +57%\", \"现金流 0.4 亿 <\
+    \ 净利 0.6 亿\"],\n \"concerns\": [\"应收增速远超营收（账期 60→90 天）\", \"盈利未同步转化为现金\"],\n \"findings\": [\n  {\"\
+    finding_id\": \"f1\", \"claim\": \"应收激增与账期放宽相关\", \"evidence_refs\": [\"ev1\"]}\n ],\n \"evidence\"\
+    : [\n  {\"ev_id\": \"ev1\", \"content\": \"应收账款余额 1.1 亿元，较上季度末 0.7 亿元增长 57%，账期 60 天调整为 90 天\", \"\
+    source_ref\": \"s1\"}\n ],\n \"sources\": [{\"ref_id\": \"s1\", \"grade\": \"L1\", \"label\": \"文档抽取文本\"\
+    }],\n \"falsification\": [\n  {\"signal\": \"Q4 回款情况\", \"threshold\": \"应收继续高增\", \"consequence\"\
+    : \"上调风险等级\", \"check_frequency\": \"event_driven\"}\n ]\n}"
