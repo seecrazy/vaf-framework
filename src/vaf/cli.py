@@ -412,6 +412,66 @@ steps:
 """
 
 
+def cmd_preset_list(args: argparse.Namespace) -> int:
+    from .presets import load_index
+
+    entries = load_index(args.presets_dir)
+    print(f"预置领域（{len(entries)} 个，vaf preset try <name> 离线体验 / install 安装）\n")
+    for entry in entries:
+        variants = "+".join(entry.get("variants") or ["lowcode"])
+        print(f"  {entry['name']:<28} [{variants}]")
+        print(f"    {entry['description']}")
+        knowledge = (entry.get("knowledge") or "").strip().replace("\n", " ")
+        print(f"    知识依据: {knowledge[:120]}{'…' if len(knowledge) > 120 else ''}\n")
+    return 0
+
+
+def cmd_preset_show(args: argparse.Namespace) -> int:
+    from .presets import preset_path
+
+    path = preset_path(args.name, args.presets_dir)
+    print(path.read_text(encoding="utf-8"))
+    return 0
+
+
+def cmd_preset_install(args: argparse.Namespace) -> int:
+    from .presets import install_preset, preset_path
+
+    dest = install_preset(args.name, target_dir=args.dir, explicit_dir=args.presets_dir)
+    print(f"已安装: {dest}")
+    print("下一步：")
+    print(f"  1. vaf run --domain {args.name} --input <你的输入.json>   # 配置真实 LLM 后即用")
+    print(f"  2. 按需编辑阈值/提示词（文件头注释标注了知识依据与校准要求）")
+    src_dir = preset_path(args.name, args.presets_dir).parent
+    py_ref = src_dir / "python"
+    if py_ref.is_dir():
+        print(f"  3. 代码风格参考实现: {py_ref}")
+    return 0
+
+
+def cmd_preset_try(args: argparse.Namespace) -> int:
+    from .presets import try_preset
+
+    results = try_preset(args.name, presets_root=args.presets_dir)
+    print(f"== 预置领域 {args.name} 离线体验（{len(results)} 个样例，零外部依赖）==\n")
+    failed = 0
+    for sample_name, handle in results:
+        result = handle.result or {}
+        print(f"  [{sample_name}]")
+        print(f"    终态: {handle.status.value}  结论: {result.get('conclusion')}")
+        if handle.error:
+            print(f"    错误: {handle.error[:160]}")
+            failed += 1
+        extra = {k: v for k, v in result.items()
+                 if k in ("dti_computed", "top_risks", "missing_items", "revision_warning", "risk_factors")}
+        if extra:
+            print(f"    要点: {json.dumps(extra, ensure_ascii=False, default=str)[:200]}")
+        if handle.falsification_flags:
+            print(f"    证伪触发: {handle.falsification_flags}")
+        print()
+    return 1 if failed else 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="vaf", description="VAF 2.0 CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -465,6 +525,29 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="lowcode=单个 YAML 文件（默认）；code=Python 领域包（完整控制）",
     )
     scaffold.set_defaults(func=cmd_scaffold)
+
+    preset = sub.add_parser("preset", help="预置领域库（0 分钟即用）")
+    preset_sub = preset.add_subparsers(dest="action", required=True)
+
+    p_list = preset_sub.add_parser("list", help="列出预置领域")
+    p_list.add_argument("--presets-dir", default=None)
+    p_list.set_defaults(func=cmd_preset_list)
+
+    p_show = preset_sub.add_parser("show", help="查看预置领域 YAML 全文")
+    p_show.add_argument("name")
+    p_show.add_argument("--presets-dir", default=None)
+    p_show.set_defaults(func=cmd_preset_show)
+
+    p_install = preset_sub.add_parser("install", help="安装到 domains/（即被自动发现）")
+    p_install.add_argument("name")
+    p_install.add_argument("--dir", default="domains")
+    p_install.add_argument("--presets-dir", default=None)
+    p_install.set_defaults(func=cmd_preset_install)
+
+    p_try = preset_sub.add_parser("try", help="离线体验（样例输入 + 脚本化响应）")
+    p_try.add_argument("name")
+    p_try.add_argument("--presets-dir", default=None)
+    p_try.set_defaults(func=cmd_preset_try)
 
     args = parser.parse_args(argv)
     return args.func(args)

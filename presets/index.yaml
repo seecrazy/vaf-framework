@@ -1,0 +1,27 @@
+# V2.3 预置领域目录（vaf preset list 读取）
+# 每个条目：name/description/tags/knowledge（知识依据声明，供用户校准评估）
+presets:
+  - name: credit_review
+    description: 个人信贷预审（DTI 推算 + 征信硬规则 + 低置信降额建议）
+    tags: [finance, risk, two_stage]
+    knowledge: |
+      还款收入比（DTI）审慎线 50%、征信评分人工线 600/拒线 450、
+      个人贷款用途监管禁止流向（楼市/股市/理财）。阈值需按机构风控政策校准。
+    variants: [lowcode, python]
+
+  - name: contract_risk_review
+    description: 合同条款风险审查（违约金/管辖/解除权/保密/赔偿上限 + 谈判建议）
+    tags: [legal, extraction, review]
+    knowledge: |
+      《民法典》585 条违约金调减（司法实践常参照损失 30%）、《民事诉讼法》
+      协议管辖联系点要求、《民法典》496 条格式条款提示义务。供模板参考，
+      不构成法律意见。
+    variants: [lowcode]
+
+  - name: financial_report_extract
+    description: 上市公司公告结构化抽取（营收/净利/扣非/同比 + 数据缺口强制声明）
+    tags: [finance, extraction, data_quality]
+    knowledge: |
+      定期报告法定披露格式准则；来源分级（公告原文 L1 / 转述 L2 / 传闻 L3）；
+      业绩快报与正式年报口径差异。缺项不得推算，必须写 data_gaps。
+    variants: [lowcode]

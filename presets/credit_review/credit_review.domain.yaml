@@ -1,0 +1,110 @@
+# =============================================================================
+# 预置领域：credit_review 个人信贷预审（零代码，V2.3 预置库）
+# -----------------------------------------------------------------------------
+# 知识依据（生产使用前请按本机构风控政策校准阈值）：
+# - 还款能力：商业银行个人贷款普遍采用还款收入比（DTI）审慎线，
+#   月还款总额/月收入 ≥ 50% 通常不予直接通过（部分机构审慎线 40%~55%）；
+# - 征信：以第三方征信评分为例（0-1000 常见区间），<600 建议转人工，
+#   <450 或当前逾期通常拒绝；
+# - 贷款用途：监管明确个人消费贷/经营贷资金不得流入楼市、股市、理财
+#   （《个人贷款管理办法》《流动资金贷款管理办法》精神），违规用途直接拒绝。
+# 本文件同时是接入教程：每个段落的注释解释了对应框架概念。
+# =============================================================================
+domain: credit_review
+version: "1.0.0"
+data_classification: sensitive          # 涉及收入与征信 → 敏感级（提示词自动脱敏 PII）
+
+# ---------------------------------------------------------------------------
+# 输入契约：字段表即模型。required/默认值/min/max/enum 全部声明式。
+# ---------------------------------------------------------------------------
+input:
+  fields:
+    - {name: loan_amount, type: float, required: true, min: 1000, max: 5000000, description: 申请金额（元）}
+    - {name: term_months, type: int, required: true, min: 3, max: 120, description: 期限（月）}
+    - {name: monthly_income, type: float, required: true, min: 0, description: 月收入（元）}
+    - {name: monthly_debt_payment, type: float, required: true, min: 0, description: 现有月负债偿还额（元）}
+    - {name: credit_score, type: int, min: 0, max: 1000, required: true, description: 第三方征信评分}
+    - {name: employment, type: str, enum: [stable_employed, self_employed, contract, retired, unemployed], default: stable_employed}
+    - {name: loan_purpose, type: str, required: true, description: 贷款用途}
+
+# ---------------------------------------------------------------------------
+# 输出契约：conclusion_enum 自动追加 insufficient_data 哨兵（信息不足→可配澄清回路）。
+# ---------------------------------------------------------------------------
+outputs:
+  decision:
+    conclusion_enum: [pre_approved, manual_review, rejected]
+    fields:
+      - {name: dti_computed, type: float, description: 推算还款收入比}
+      - {name: risk_factors, type: list, description: 风险因子清单}
+      - {name: suggested_adjustments, type: list, description: 建议调整（降额/延长期限等）}
+
+# ---------------------------------------------------------------------------
+# 预处理：确定性规则前置（区间校验不需要 LLM）。嵌套点路径同样支持。
+# ---------------------------------------------------------------------------
+preprocessor:
+  validators:
+    - {type: range, field: monthly_income, low: 0, high: 10000000, level: fatal}
+    - {type: range, field: credit_score, low: 0, high: 1000, level: warning}
+
+# ---------------------------------------------------------------------------
+# 技能：提示词模板 + {{沙箱表达式}} 插值。硬规则写在提示词里（领域知识承载处）。
+# ---------------------------------------------------------------------------
+skills:
+  - name: assess
+    type: analysis
+    output: decision
+    prompt: |
+      你是信贷预审员。基于以下申请信息给出预审结论：
+      申请金额 {{ input.loan_amount }} 元，期限 {{ input.term_months }} 个月；
+      月收入 {{ input.monthly_income }} 元，现有月偿债 {{ input.monthly_debt_payment }} 元；
+      征信评分 {{ input.credit_score }}；就业状态 {{ input.employment }}；用途：{{ input.loan_purpose }}。
+
+      预审规则（按顺序判定）：
+      1. 推算新增月还款额（等额本息，年利率按 8% 估算）与 DTI =
+         (现有月偿债 + 新增月还款) / 月收入，写入 dti_computed；
+      2. 用途违规（购房/股市/理财/偿还赌债等监管禁止流向）→ rejected；
+      3. DTI ≥ 0.50 → rejected；0.40 ~ 0.50 → manual_review 并在
+         suggested_adjustments 给出降额/延长期限方案；
+      4. 征信评分 < 450 → rejected；450 ~ 600 → manual_review；
+      5. 失业状态（unemployed）且无其他收入证明 → manual_review；
+      6. 以上均不命中且 DTI < 0.40、评分 ≥ 600 → pre_approved；
+      7. 关键信息缺失 → 结论 insufficient_data 并追问（clarifying_questions）。
+      风险因子逐条写入 risk_factors；每条结论必须给出 findings（含证据引用）与证伪条件。
+
+  # 终审：低置信预批不允许直接通过 → 降级人工（零代码否决器）
+  - name: approval_guard
+    type: audit
+    output: decision
+    veto_when: "output.conclusion == 'pre_approved' and output.confidence != 'high'"
+    downgrade_to: manual_review
+    confidence_after: medium
+
+# ---------------------------------------------------------------------------
+# 可执行证伪：复查征信显著低于初评 → 预审结论失效（触发处置：通知/失效/建议重跑）
+# ---------------------------------------------------------------------------
+falsification_checkers:
+  - {checker_id: credit_score_recheck, when: "input.credit_score < 450"}
+
+# ---------------------------------------------------------------------------
+# 编排：与代码领域共用全部步骤类型（审核/澄清/路由/子流程/流式均可声明）
+# ---------------------------------------------------------------------------
+pipeline:
+  name: credit_review
+  domain: credit_review
+  version: "1.0.0"
+  steps:
+    - name: assess
+      type: skill
+      skill: assess
+      on_schema_fail: retry
+      max_retries: 2
+  # 高金额可加人工审核，例如：
+  # - name: high_amount_review
+  #   type: human_review
+  #   depends_on: [assess]
+  #   trigger_condition: "input.loan_amount > 1000000 and steps.assess.output.conclusion == 'pre_approved'"
+  #   timeout_seconds: 86400
+  #   on_timeout: reject
+  #   review_fields: [conclusion, dti_computed]
+
+result_from: assess

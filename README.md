@@ -1,4 +1,4 @@
-# VAF 2.2 — 垂直领域 Agent 通用可靠性框架
+# VAF 2.3 — 垂直领域 Agent 通用可靠性框架
 
 Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输出可校验」的垂直领域（医疗分诊、投研、信贷审批、运维排障、工单质检……）提供**生产级可靠性骨架**。框架零领域知识；**接入一个领域可以只写一个 YAML 文件（V2.2 零代码路径），也可以用四层 Python API 做完整控制，两者可在同一 Pipeline 混用。**
 
@@ -13,10 +13,23 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
 
 vaf demo        # 离线演示：澄清回路 → 审核 → 路由探测 → 零代码领域 → 评估门禁
-pytest          # 186 个用例（~1s），零外部依赖
+pytest          # 196 个用例（~1s），零外部依赖
 ```
 
-## 一分钟接入一个领域（零代码，V2.2 推荐）
+## 0 分钟使用：预置领域库（V2.3 推荐）
+
+常用领域已预置（基于真实领域知识撰写，文件头标注知识依据与校准要求）：
+
+```bash
+vaf preset list                        # credit_review / contract_risk_review / financial_report_extract
+vaf preset try credit_review           # 离线体验（样例输入，零外部依赖）
+vaf preset install credit_review       # 复制到 domains/ 即被自动发现 → 接真实 LLM 即用
+```
+
+credit_review 同时附**代码风格孪生实现**（presets/credit_review/credit_review_python/）：
+同一领域两种接入方式对照，是理解"声明式何时够用、何时转代码"的最好教材。
+
+## 一分钟接入一个领域（零代码，V2.2）
 
 ```bash
 vaf scaffold credit_review      # 生成 credit_review.domain.yaml（可直接加载运行）
@@ -159,6 +172,7 @@ vaf scaffold <domain_name>                            # 生成领域包模板
 - **`domains/medical_triage/`** — 澄清回路 + emergency 人工审核（超时 reject）+ 低置信终审降级 + 体温证伪回检 + 运行期配置阈值（ConfigView）+ SQLite 跨实例续跑
 - **`domains/ops_incident/`** — 假设置信度路由 + log_probe 工具探测循环 + 子流程报告 + 失败断点续跑 + 工具补偿
 - **`domains/customer_ticket.domain.yaml`** — **零代码领域**（V2.2）：契约/抽取/分类/终审降级/表达式证伪全部在一个 YAML 文件里
+- **`presets/`** — **预置领域库**（V2.3）：信贷预审（含代码孪生）/合同审查/公告抽取，0 分钟即用
 
 ## 测试
 

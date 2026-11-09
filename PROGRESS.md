@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.2.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **186 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.3.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **196 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -57,6 +57,17 @@
 - 零代码示例领域 `customer_ticket.domain.yaml`（demo 场景 [3]）；
 - 显式 default 隐含可选；动态枚举 str 混入（与框架约定一致）；
 - 测试 161 → **186**（test_lowcode.py：动态契约/插值安全/终审降级/证伪触发/交互回路/评估门禁/发现/脚手架/错误信息）。
+
+
+### 2026-11-09（第四批）· V2.3.0 —— 预置领域库（0 分钟使用）
+- `vaf/presets.py` + `presets/`：目录（index.yaml 含 knowledge 知识依据声明）、
+  install（复制即被自动发现）、try（PresetResponder 样例驱动离线体验，零副作用）；
+- 三个预置领域（内容基于真实领域实践撰写并标注校准要求）：
+  credit_review（信贷预审，DTI/征信口径 + 代码风格孪生包教学对照）、
+  contract_risk_review（合同审查，民法典 585/496 条等依据）、
+  financial_report_extract（公告抽取，来源分级 + 数据缺口强制声明）；
+- CLI `vaf preset list/show/install/try`；
+- 测试 186 → **196**（目录完整性/三预置离线跑通/证伪触发/install/孪生包含人工审核路径）。
 
 ## 测试基线
 

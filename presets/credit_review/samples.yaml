@@ -1,0 +1,74 @@
+# credit_review 预置领域离线样例（vaf preset try 使用；也用作接入参考）
+# responses 按技能名给出脚本化 LLM 响应（离线体验用；接真实模型后无需此文件）
+inputs:
+  - name: 良好申请人（DTI 低、征信优）
+    input:
+      raw_id: cr-sample-1
+      source: loan_app
+      timestamp: "2026-11-09T10:00:00"
+      loan_amount: 200000
+      term_months: 36
+      monthly_income: 30000
+      monthly_debt_payment: 2000
+      credit_score: 720
+      employment: stable_employed
+      loan_purpose: 装修
+
+  - name: 高负债申请人（DTI 偏高、征信一般）
+    input:
+      raw_id: cr-sample-2
+      source: loan_app
+      timestamp: "2026-11-09T10:01:00"
+      loan_amount: 500000
+      term_months: 24
+      monthly_income: 18000
+      monthly_debt_payment: 9500
+      credit_score: 560
+      employment: stable_employed
+      loan_purpose: 教育
+
+responses:
+  assess:
+    # 按调用顺序依次返回；两份样例分别对应 pre_approved / manual_review
+    - |
+      {
+        "conclusion": "pre_approved",
+        "confidence": "high",
+        "dti_computed": 0.26,
+        "risk_factors": ["多头借贷查询次数中等"],
+        "suggested_adjustments": [],
+        "findings": [
+          {"finding_id": "f1", "claim": "推算 DTI 约 0.26，低于 0.40 审慎线", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "征信评分 720 高于 600 通过线", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "monthly_income=30000 monthly_debt_payment=2000 loan_amount=200000 term=36", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "credit_score=720", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+征信报告"}],
+        "falsification": [
+          {"signal": "征信复查评分显著下降", "threshold": "复查评分 < 600", "consequence": "撤销 pre_approved 转人工", "check_frequency": "realtime", "checker_id": "credit_score_recheck"}
+        ],
+        "data_classification": "sensitive"
+      }
+    - |
+      {
+        "conclusion": "manual_review",
+        "confidence": "medium",
+        "dti_computed": 0.58,
+        "risk_factors": ["DTI 0.58 超过 0.50 直接否决线的边缘（降额后可评）", "征信评分 560 低于 600 人工线"],
+        "suggested_adjustments": ["额度降至 200000 元", "期限延长至 48 个月"],
+        "findings": [
+          {"finding_id": "f1", "claim": "推算 DTI 约 0.58，超出舒适区间", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "征信评分 560 命中人工复核线", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "monthly_income=18000 monthly_debt_payment=9500 loan_amount=500000 term=24", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "credit_score=560", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+征信报告"}],
+        "falsification": [
+          {"signal": "补充其他收入证明", "threshold": "DTI 降至 0.45 以下", "consequence": "可重新进入自动预审", "check_frequency": "event_driven"}
+        ],
+        "data_classification": "sensitive"
+      }

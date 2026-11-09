@@ -1,0 +1,90 @@
+# =============================================================================
+# 预置领域：contract_risk_review 合同条款风险审查（零代码，V2.3 预置库）
+# -----------------------------------------------------------------------------
+# 知识依据（审查要点为常规法务实践，供模板参考；不构成法律意见）：
+# - 违约金：约定过分高于实际损失可请求调减（《民法典》第 585 条），
+#   司法实践常以损失的 30% 为过高参照；过高违约金是常见谈判点；
+# - 协议管辖：须选与争议有实际联系地点的法院（《民事诉讼法》第 35 条），
+#   约定对方所在地且对我方明显不利的属于常见风险；
+# - 格式条款：提供方须尽提示说明义务（《民法典》第 496 条），未提示可主张不成立；
+# - 其他高频风险：单方解除权不对等、知识产权归属缺失、保密期限过长/无期限、
+#   自动续约、无限连带赔偿（无赔偿上限）。
+# =============================================================================
+domain: contract_risk_review
+version: "1.0.0"
+data_classification: confidential       # 合同文本 → 机密级
+
+input:
+  fields:
+    - {name: contract_text, type: str, required: true, max: 60000, description: 合同全文}
+    - {name: contract_type, type: str, enum: [purchase, sales, service, labor, lease, nda, other], default: other}
+    - {name: my_role, type: str, enum: [party_a, party_b], default: party_a, description: 我方立场}
+
+outputs:
+  clauses:
+    kind: entity                         # 抽取实体（无需证伪三件套）
+    fields:
+      - {name: clause_list, type: list, description: "抽取的条款 [{category, quote}]"}
+  assessment:
+    conclusion_enum: [low_risk, medium_risk, high_risk, needs_legal_review]
+    fields:
+      - {name: top_risks, type: list, description: "主要风险点 [{category, severity, why}]"}
+      - {name: negotiation_points, type: list, description: 建议谈判修改项}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [contract_text]}
+  enrichers:
+    - {type: length_truncate, field: contract_text, max_chars: 20000}
+
+skills:
+  - name: extract_clauses
+    type: extraction
+    output: clauses
+    prompt: |
+      从合同文本抽取关键条款，按 category 归类（违约金/解除权/管辖/知识产权/
+      保密/付款/赔偿/续约/其他），逐条给出原文引用（quote）。
+      合同类型：{{ input.contract_type }}；我方立场：{{ input.my_role }}。
+      文本：{{ input.contract_text }}
+
+  - name: assess_risk
+    type: analysis
+    output: assessment
+    prompt: |
+      已抽取条款：{{ upstream.extract_clauses }}
+      合同类型：{{ input.contract_type }}，我方为{{ input.my_role }}（party_a=甲方）。
+      审查规则：
+      1. 违约金过分高于可能损失（可参照损失 30% 的调减实践）→ 至少 medium_risk，
+        写入谈判点"调减违约金"；
+      2. 管辖约定在对方所在地且对我方不利 → medium_risk 起；
+      3. 我方为接受格式条款一方且未见提示说明安排 → 提示 496 条风险；
+      4. 单方解除权不对等 / 无赔偿上限 / 保密无期限 / 自动续约无退出窗口 → 逐项计入 top_risks；
+      5. 任一类别 severity=high，或条款相互矛盾无法判定 → needs_legal_review；
+      6. 文本不含实质条款（过短/模板占位）→ insufficient_data 并追问合同版本。
+
+  - name: risk_guard
+    type: audit
+    output: assessment
+    veto_when: "output.conclusion == 'high_risk' and output.confidence != 'high'"
+    downgrade_to: needs_legal_review
+    confidence_after: medium
+
+falsification_checkers:
+  - {checker_id: contract_amended, when: "'补充协议' in input.contract_text"}
+
+pipeline:
+  name: contract_risk_review
+  domain: contract_risk_review
+  version: "1.0.0"
+  steps:
+    - name: extract_clauses
+      type: skill
+      skill: extract_clauses
+    - name: assess_risk
+      type: skill
+      skill: assess_risk
+      depends_on: [extract_clauses]
+      on_schema_fail: retry
+      max_retries: 2
+
+result_from: assess_risk

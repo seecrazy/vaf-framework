@@ -1,0 +1,81 @@
+# =============================================================================
+# 预置领域：financial_report_extract 上市公司公告结构化抽取（零代码，V2.3 预置库）
+# -----------------------------------------------------------------------------
+# 知识依据：
+# - 定期报告披露规则：营收/净利/扣非净利及其同比为法定披露项
+#   （《公开发行证券的公司信息披露内容与格式准则第 2 号》年度报告格式）；
+# - 数据可信度分级：交易所公告原文为 L1 权威来源，媒体转述/研报为 L2，
+#   传闻为 L3——本领域强制 sources 分级，缺项必须显式写 data_gaps；
+# - 常见坑：业绩快报与正式年报数字可能修正；非经常性损益需单列（扣非口径）。
+# =============================================================================
+domain: financial_report_extract
+version: "1.0.0"
+data_classification: internal
+
+input:
+  fields:
+    - {name: company, type: str, required: true, description: 公司简称/代码}
+    - {name: period, type: str, required: true, pattern: "^[0-9]{4}(Q[1-4]|H1|FY)$", description: 报告期（如 2026Q3 / 2026FY）}
+    - {name: announcement_text, type: str, required: true, max: 50000, description: 公告原文（节选）}
+
+outputs:
+  metrics:
+    kind: entity
+    fields:
+      - {name: revenue, type: float, description: 营业收入（元）}
+      - {name: net_profit, type: float, description: 归母净利润（元）}
+      - {name: deducted_net_profit, type: float, description: 扣非归母净利润（元）}
+      - {name: yoy_growth_pct, type: float, description: 营收同比（%）}
+      - {name: key_events, type: list, description: 重大事项摘要}
+  quality:
+    conclusion_enum: [complete, partial]
+    fields:
+      - {name: missing_items, type: list, description: 缺失指标清单}
+      - {name: revision_warning, type: bool, description: 是否为快报/未经审计口径}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [company, period, announcement_text]}
+
+skills:
+  - name: extract_metrics
+    type: extraction
+    output: metrics
+    prompt: |
+      从公告原文抽取财务指标（单位：元，同比：%）。
+      公司：{{ input.company }}；报告期：{{ input.period }}。
+      注意区分归母/扣非口径；未披露的指标留空，不得推算。
+      公告原文：{{ input.announcement_text }}
+
+  - name: assess_quality
+    type: analysis
+    output: quality
+    prompt: |
+      抽取结果：{{ upstream.extract_metrics }}
+      判定数据完整度：
+      1. 营收/净利/扣非/同比齐备且为经审计正式口径 → complete；
+      2. 任一法定披露项缺失，或来源为业绩快报/未经审计 → partial，
+         缺项逐条写 missing_items，快报口径置 revision_warning=true，
+         并把缺项写入 data_gaps（reason=not_disclosed）；
+      3. 原文信息不足以判断 → insufficient_data 并追问公告版本。
+      所有证据必须来自公告原文（sources 标 L1）。
+
+falsification_checkers:
+  - {checker_id: formal_report_published, when: "'正式年度报告' in input.announcement_text"}
+
+pipeline:
+  name: financial_report_extract
+  domain: financial_report_extract
+  version: "1.0.0"
+  steps:
+    - name: extract_metrics
+      type: skill
+      skill: extract_metrics
+    - name: assess_quality
+      type: skill
+      skill: assess_quality
+      depends_on: [extract_metrics]
+      on_schema_fail: retry
+      max_retries: 2
+
+result_from: assess_quality

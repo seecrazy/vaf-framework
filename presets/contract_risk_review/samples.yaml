@@ -1,0 +1,93 @@
+# contract_risk_review 预置领域离线样例（vaf preset try）
+inputs:
+  - name: 采购合同（高额违约金 + 对方管辖）
+    input:
+      raw_id: ct-sample-1
+      source: legal_upload
+      timestamp: "2026-11-09T10:00:00"
+      contract_text: |
+        采购合同（节选）：第九条 违约责任：乙方逾期交货的，每日按合同总价款的 5%
+        支付违约金；甲方逾期付款的，每日按 0.01% 支付违约金。
+        第十一条 争议解决：本合同争议由乙方所在地人民法院管辖。
+        第十二条 未经甲方书面同意不得转包。本合同一式两份。
+      contract_type: purchase
+      my_role: party_a
+
+  - name: 标准服务合同（风险较低）
+    input:
+      raw_id: ct-sample-2
+      source: legal_upload
+      timestamp: "2026-11-09T10:01:00"
+      contract_text: |
+        服务合同（节选）：服务期 12 个月，费用按月结算；任一方提前 30 日书面通知
+        可解除；争议由合同签订地人民法院管辖；双方各自承担因本合同产生的
+        直接损失，赔偿上限为合同总额。
+      contract_type: service
+      my_role: party_b
+
+responses:
+  extract_clauses:
+    - |
+      {
+        "clause_list": [
+          {"category": "违约金", "quote": "乙方逾期交货的，每日按合同总价款的 5% 支付违约金"},
+          {"category": "违约金", "quote": "甲方逾期付款的，每日按 0.01% 支付违约金"},
+          {"category": "管辖", "quote": "本合同争议由乙方所在地人民法院管辖"},
+          {"category": "其他", "quote": "未经甲方书面同意不得转包"}
+        ]
+      }
+    - |
+      {
+        "clause_list": [
+          {"category": "解除权", "quote": "任一方提前 30 日书面通知可解除"},
+          {"category": "管辖", "quote": "争议由合同签订地人民法院管辖"},
+          {"category": "赔偿", "quote": "赔偿上限为合同总额"}
+        ]
+      }
+  assess_risk:
+    - |
+      {
+        "conclusion": "high_risk",
+        "confidence": "high",
+        "top_risks": [
+          {"category": "违约金", "severity": "high",
+           "why": "日 5% 折年化远超可能损失，且双方比例极不对等（585 条调减参照）"},
+          {"category": "管辖", "severity": "medium", "why": "乙方所在地管辖对我方不利"}
+        ],
+        "negotiation_points": ["违约金改为日 0.05% 并设上限", "管辖改为合同签订地"],
+        "findings": [
+          {"finding_id": "f1", "claim": "违约金条款过分高于可能损失", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "管辖约定不利于甲方", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "每日按合同总价款的 5% 支付违约金", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "争议由乙方所在地人民法院管辖", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "合同原文"}],
+        "falsification": [
+          {"signal": "签署补充协议修改违约金与管辖", "threshold": "存在补充协议",
+           "consequence": "重新评估风险等级", "check_frequency": "event_driven",
+           "checker_id": "contract_amended"}
+        ],
+        "data_classification": "confidential"
+      }
+    - |
+      {
+        "conclusion": "low_risk",
+        "confidence": "high",
+        "top_risks": [],
+        "negotiation_points": [],
+        "findings": [
+          {"finding_id": "f1", "claim": "解除权对等且赔偿设有上限", "evidence_refs": ["ev1"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "任一方提前 30 日书面通知可解除；赔偿上限为合同总额",
+           "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "合同原文"}],
+        "falsification": [
+          {"signal": "合同版本更新", "threshold": "文本变化", "consequence": "重新评估",
+           "check_frequency": "event_driven"}
+        ],
+        "data_classification": "confidential"
+      }
