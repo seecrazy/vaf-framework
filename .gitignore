@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# VAF 运行时产物
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.vaf/
+audit/*.jsonl
+events/*.jsonl
+
+# 系统
+.DS_Store
