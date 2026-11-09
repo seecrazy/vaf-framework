@@ -454,7 +454,7 @@ User→Role→Permission；Permission 覆盖 run/submit/config_write/review_appr
 
 `VafApp`：register_domain（契约/节点/技能/Pipeline 注册+加载期校验）、run（幂等）、resume、submit_review、submit_clarification、list_reviews、falsification 引擎接入、eval 入口、审计/指标导出。
 
-CLI（`python -m vaf.cli` / console_script `vaf`）：
+CLI（`python3 -m vaf.cli` / console_script `vaf`）：
 `vaf scaffold <name>` 生成领域包模板；`vaf run --domain medical_triage --input case.json [--webhook URL]`；`vaf inspect <run_id> [--json]`（V2.1 P0-2：步骤状态/路由/暂停点/事件一屏排障）；`vaf review list|approve|reject`；`vaf clarify submit <run> <answers.json>`；`vaf eval --domain <d> --dataset <yaml>`；`vaf demo`（离线演示全流程）。
 
 **领域自动发现（V2.1 P2-1，`runtime/discovery.py`）**：`register_discovered(app, dirs)` 扫描目录下含 `register(app)` 的领域包；第三方发行版经 entry_points 组 `vaf.domains` 注册（pip 安装即发现）；CLI 的 `build_app` 已切换到自动发现。

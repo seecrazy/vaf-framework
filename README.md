@@ -14,7 +14,7 @@ Vertical Agent Framework（VAF）— a production-grade reliability skeleton for
 
 ```bash
 git clone <本仓库> && cd vaf-framework
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # 少数环境命令为 python；用 python3 --version 确认 ≥3.10
 pip install -e ".[test]"
 
 vaf demo        # 离线全流程演示（零 API Key、零外部服务）：
