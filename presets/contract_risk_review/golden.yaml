@@ -1,0 +1,95 @@
+# 合同审查黄金集（真实 LLM 模式参与）
+cases:
+  - name: 黄金-违约金对等低风险
+    expected_conclusion: low_risk
+    input:
+      raw_id: cg1
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: service
+      my_role: party_a
+      contract_text: |
+        服务合同：任一方违约按合同总额 5% 支付违约金；争议由合同签订地法院管辖；
+        赔偿以直接损失为限且上限为合同总额；任一方提前 30 日通知可解除。
+
+  - name: 黄金-无上限赔偿高风险
+    expected_conclusion: high_risk
+    input:
+      raw_id: cg2
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: sales
+      my_role: party_b
+      contract_text: |
+        采购合同：乙方对交付产品造成的任何直接、间接、连带损失承担无限赔偿责任，
+        不设上限；甲方有权随时解除且不承担补偿。
+
+  - name: 黄金-自动续约无退出窗口
+    expected_conclusion: medium_risk
+    input:
+      raw_id: cg3
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: service
+      my_role: party_a
+      contract_text: |
+        服务协议：期限 12 个月，期满未书面异议自动续约 12 个月，无退出提示安排；
+        其余条款：按月结算，赔偿上限为年度费用。
+
+  - name: 黄金-格式条款未提示
+    expected_conclusion: medium_risk
+    input:
+      raw_id: cg4
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: other
+      my_role: party_b
+      contract_text: |
+        会员服务协议（乙方提供的格式合同）：乙方有权单方调整服务内容与价格，
+        继续使用视为同意；该条以普通字体列于附件三，未加粗未提示。
+
+  - name: 黄金-解除权不对等
+    expected_conclusion: medium_risk
+    input:
+      raw_id: cg5
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: lease
+      my_role: party_b
+      contract_text: |
+        租赁合同：甲方可提前 7 日通知解除且不承担违约责任；乙方须提前 90 日
+        书面通知并支付两个月租金作为解除补偿。
+
+  - name: 黄金-保密无期限
+    expected_conclusion: medium_risk
+    input:
+      raw_id: cg6
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: nda
+      my_role: party_b
+      contract_text: |
+        保密协议：乙方对所获信息永久保密，无保密范围例外（含已公开信息），
+        违约金为合同总额的 200%。
+
+  - name: 黄金-IP归属全部甲方
+    expected_conclusion: high_risk
+    input:
+      raw_id: cg7
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: service
+      my_role: party_b
+      contract_text: |
+        开发合同：项目全部成果（含乙方通用框架与工具组件）知识产权归甲方所有，
+        乙方不得在任何后续项目中复用；乙方仅获得一次性开发费。
+
+  - name: 黄金-文本过短需追问
+    expected_conclusion: insufficient_data
+    input:
+      raw_id: cg8
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      contract_type: other
+      my_role: party_a
+      contract_text: 见附件。

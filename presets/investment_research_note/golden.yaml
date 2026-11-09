@@ -1,0 +1,96 @@
+# 投研评审黄金集（真实 LLM 模式参与；研究辅助，不构成投资建议）
+cases:
+  - name: 黄金-存贷双高存疑
+    expected_conclusion: thesis_weakened
+    input:
+      raw_id: ig1
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例制造B（002xxx）
+      filings_text: |
+        货币资金 28 亿元（占总资产 35%），同时短期借款 22 亿元、长期借款 8 亿元，
+        财务费用 1.4 亿元；利息收入 0.3 亿元。营收 30 亿（+8%），归母净利 2.5 亿。
+      my_thesis: 公司现金充裕，抗风险能力强。
+
+  - name: 黄金-扣非负增长表观高增
+    expected_conclusion: thesis_weakened
+    input:
+      raw_id: ig2
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例科技C（300xxx）
+      filings_text: |
+        营收 12 亿（+30%），归母净利 1.8 亿（+25%）；扣非净利 0.2 亿（-55%）；
+        非经常性损益主要来自出售子公司股权 1.4 亿与政府补助 0.2 亿。
+      my_thesis: 公司业绩高增长趋势确立。
+
+  - name: 黄金-稳定消费现金流优
+    expected_conclusion: thesis_supported
+    input:
+      raw_id: ig3
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例食品D（600xxx）
+      filings_text: |
+        营收 20 亿（+6%），扣非净利 2.2 亿（+7%），经营现金流净额 2.8 亿；
+        应收账款 0.6 亿与营收同步；无有息负债；商誉 0.1 亿。
+      my_thesis: 盈利质量扎实，现金创造力优于账面。
+
+  - name: 黄金-重资产适用PB
+    expected_conclusion: thesis_supported
+    input:
+      raw_id: ig4
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例银行E（601xxx）
+      filings_text: |
+        营收 80 亿（+3%），归母净利 25 亿（+4%）；不良率 1.0% 持续三年下降；
+        核心一级资本充足率 11%；拨备覆盖率 220%。
+      my_thesis: 资产质量改善趋势明确。
+
+  - name: 黄金-快报口径需谨慎
+    expected_conclusion: thesis_unclear
+    input:
+      raw_id: ig5
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例新经济F（688xxx）
+      filings_text: |
+        2026 年业绩快报（未经审计）：营收 5 亿（+40%），净利润 0.3 亿首次盈利；
+        未披露经营现金流、应收与扣非口径。
+      my_thesis: 扭亏为盈拐点已至。
+
+  - name: 黄金-应收激增远超营收
+    expected_conclusion: thesis_weakened
+    input:
+      raw_id: ig6
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例软件G（300xxx）
+      filings_text: |
+        营收 8 亿（+10%）；应收账款 6.5 亿（去年同期 3.2 亿，+103%）；
+        经营现金流净额 -0.8 亿；坏账计提政策由账龄法改为余额百分比法。
+      my_thesis: 收入稳健增长。
+
+  - name: 黄金-商誉占比高且承诺临期
+    expected_conclusion: thesis_weakened
+    input:
+      raw_id: ig7
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例传媒H（002xxx）
+      filings_text: |
+        商誉 18 亿（占总资产 45%），标的资产 2024 年并购，业绩承诺期三年
+        至 2026 年底；本年标的净利仅完成承诺的 62%。
+      my_thesis: 并购整合效果逐步显现。
+
+  - name: 黄金-披露缺失应追问
+    expected_conclusion: insufficient_data
+    input:
+      raw_id: ig8
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      company: 示例材料I（430xxx）
+      filings_text: |
+        公司公告：预计 2026 年业绩同比大幅变动，具体数字以正式披露为准。
+      my_thesis: 业绩超预期。

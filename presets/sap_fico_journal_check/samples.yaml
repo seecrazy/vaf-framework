@@ -1,105 +1,93 @@
-# sap_fico_journal_check 预置领域离线样例（vaf preset try；Python 变体）
-# 本预置为 Python 变体（跨行借贷求和需要自定义聚合节点）。
 inputs:
-  - name: 平衡凭证（差旅费用计提，损益行带成本中心）
-    input:
-      raw_id: sap-sample-1
-      source: eri_import
-      timestamp: "2026-11-09T10:00:00"
-      company_code: "1000"
-      doc_type: SA
-      posting_date: "2026-11-08"
-      reference: TRV-2026-1108-001
-      line_items:
-        - {account: "470200", dc: D, amount: 4600.00, cost_center: CC-1001, text: 差旅费-销售部}
-        - {account: "222100", dc: C, amount: 400.00, tax_code: J1, text: 进项税}
-        - {account: "100201", dc: C, amount: 4200.00, text: 备用金}
-
-  - name: 借贷不平（差额 100 → rejected）
-    input:
-      raw_id: sap-sample-2
-      source: eri_import
-      timestamp: "2026-11-09T10:01:00"
-      company_code: "1000"
-      doc_type: SA
-      posting_date: "2026-11-08"
-      reference: TRV-2026-1108-002
-      line_items:
-        - {account: "470200", dc: D, amount: 4700.00, cost_center: CC-1001, text: 差旅费}
-        - {account: "100201", dc: C, amount: 4600.00, text: 备用金}
-
-  - name: 损益科目缺成本中心（KI235 类报错 → rejected）
-    input:
-      raw_id: sap-sample-3
-      source: eri_import
-      timestamp: "2026-11-09T10:02:00"
-      company_code: "1000"
-      doc_type: SA
-      posting_date: "2026-11-08"
-      reference: TRV-2026-1108-003
-      line_items:
-        - {account: "470200", dc: D, amount: 3000.00, text: 差旅费（漏填成本中心）}
-        - {account: "100201", dc: C, amount: 3000.00, text: 备用金}
-
+- name: 平衡凭证（差旅费用计提，损益行带成本中心）
+  input:
+    raw_id: sap-sample-1
+    source: eri_import
+    timestamp: '2026-11-09T10:00:00'
+    company_code: '1000'
+    doc_type: SA
+    posting_date: '2026-11-08'
+    reference: TRV-2026-1108-001
+    line_items:
+    - account: '470200'
+      dc: D
+      amount: 4600.0
+      cost_center: CC-1001
+      text: 差旅费-销售部
+    - account: '222100'
+      dc: C
+      amount: 400.0
+      tax_code: J1
+      text: 进项税
+    - account: '100201'
+      dc: C
+      amount: 4200.0
+      text: 备用金
+  expected: valid
+- name: 借贷不平（差额 100 → rejected）
+  input:
+    raw_id: sap-sample-2
+    source: eri_import
+    timestamp: '2026-11-09T10:01:00'
+    company_code: '1000'
+    doc_type: SA
+    posting_date: '2026-11-08'
+    reference: TRV-2026-1108-002
+    line_items:
+    - account: '470200'
+      dc: D
+      amount: 4700.0
+      cost_center: CC-1001
+      text: 差旅费
+    - account: '100201'
+      dc: C
+      amount: 4600.0
+      text: 备用金
+  expected: rejected
+- name: 损益科目缺成本中心（KI235 类报错 → rejected）
+  input:
+    raw_id: sap-sample-3
+    source: eri_import
+    timestamp: '2026-11-09T10:02:00'
+    company_code: '1000'
+    doc_type: SA
+    posting_date: '2026-11-08'
+    reference: TRV-2026-1108-003
+    line_items:
+    - account: '470200'
+      dc: D
+      amount: 3000.0
+      text: 差旅费（漏填成本中心）
+    - account: '100201'
+      dc: C
+      amount: 3000.0
+      text: 备用金
+  expected: rejected
 responses:
   posting_check:
-    - |
-      {
-        "conclusion": "valid",
-        "confidence": "high",
-        "imbalance_amount": 0.0,
-        "co_issues": [],
-        "issues": [],
-        "suggestions": [],
-        "findings": [
-          {"finding_id": "f1", "claim": "借贷合计相等且损益行均携带成本中心", "evidence_refs": ["ev1"]}
-        ],
-        "evidence": [
-          {"ev_id": "ev1", "content": "借方 4600.00 = 贷方 400.00 + 4200.00；行 1 成本中心 CC-1001", "source_ref": "s1"}
-        ],
-        "sources": [{"ref_id": "s1", "grade": "L1", "label": "凭证行项目"}],
-        "falsification": [
-          {"signal": "冲销凭证过账", "threshold": "凭证类型 AB", "consequence": "原凭证失效", "check_frequency": "event_driven", "checker_id": "reversal_posted"}
-        ],
-        "data_classification": "internal"
-      }
-    - |
-      {
-        "conclusion": "rejected",
-        "confidence": "high",
-        "imbalance_amount": 100.0,
-        "co_issues": [],
-        "issues": ["借贷不平衡：借方 4700.00，贷方 4600.00，差额 100.00"],
-        "suggestions": ["核对第 2 行金额是否应为 4700.00，修正后重新导入"],
-        "findings": [
-          {"finding_id": "f1", "claim": "借贷差额 100.00，触发 FATAL 拦截", "evidence_refs": ["ev1"]}
-        ],
-        "evidence": [
-          {"ev_id": "ev1", "content": "借贷不平衡：借方合计 4700.00，贷方合计 4600.00，差额 100.00", "source_ref": "s1"}
-        ],
-        "sources": [{"ref_id": "s1", "grade": "L1", "label": "预处理聚合校验"}],
-        "falsification": [
-          {"signal": "冲销凭证过账", "threshold": "凭证类型 AB", "consequence": "原凭证失效", "check_frequency": "event_driven", "checker_id": "reversal_posted"}
-        ],
-        "data_classification": "internal"
-      }
-    - |
-      {
-        "conclusion": "rejected",
-        "confidence": "high",
-        "imbalance_amount": 0.0,
-        "co_issues": ["行 1 损益科目 470200 未携带成本中心（SAP 报 KI235：Account requires an assignment to a CO object）"],
-        "issues": ["损益科目缺 CO 成本对象分配"],
-        "suggestions": ["行 1 补充成本中心（如 CC-1001）后重试；若科目应为资产负债类，请核对科目主数据"],
-        "findings": [
-          {"finding_id": "f1", "claim": "损益科目缺成本对象触发 FATAL", "evidence_refs": ["ev1"]}
-        ],
-        "evidence": [
-          {"ev_id": "ev1", "content": "行 1 损益科目 470200 未携带成本中心", "source_ref": "s1"}
-        ],
-        "sources": [{"ref_id": "s1", "grade": "L1", "label": "预处理 CO 分配校验"}],
-        "falsification": [
-          {"signal": "冲销凭证过账", "threshold": "凭证类型 AB", "consequence": "原凭证失效", "check_frequency": "event_driven", "checker_id": "reversal_posted"}
-        ],
-        "data_classification": "internal"
-      }
+  - "{\n  \"conclusion\": \"valid\",\n  \"confidence\": \"high\",\n  \"imbalance_amount\": 0.0,\n  \"\
+    co_issues\": [],\n  \"issues\": [],\n  \"suggestions\": [],\n  \"findings\": [\n    {\"finding_id\"\
+    : \"f1\", \"claim\": \"借贷合计相等且损益行均携带成本中心\", \"evidence_refs\": [\"ev1\"]}\n  ],\n  \"evidence\": [\n\
+    \    {\"ev_id\": \"ev1\", \"content\": \"借方 4600.00 = 贷方 400.00 + 4200.00；行 1 成本中心 CC-1001\", \"source_ref\"\
+    : \"s1\"}\n  ],\n  \"sources\": [{\"ref_id\": \"s1\", \"grade\": \"L1\", \"label\": \"凭证行项目\"}],\n\
+    \  \"falsification\": [\n    {\"signal\": \"冲销凭证过账\", \"threshold\": \"凭证类型 AB\", \"consequence\"\
+    : \"原凭证失效\", \"check_frequency\": \"event_driven\", \"checker_id\": \"reversal_posted\"}\n  ],\n \
+    \ \"data_classification\": \"internal\"\n}\n"
+  - "{\n  \"conclusion\": \"rejected\",\n  \"confidence\": \"high\",\n  \"imbalance_amount\": 100.0,\n\
+    \  \"co_issues\": [],\n  \"issues\": [\"借贷不平衡：借方 4700.00，贷方 4600.00，差额 100.00\"],\n  \"suggestions\"\
+    : [\"核对第 2 行金额是否应为 4700.00，修正后重新导入\"],\n  \"findings\": [\n    {\"finding_id\": \"f1\", \"claim\"\
+    : \"借贷差额 100.00，触发 FATAL 拦截\", \"evidence_refs\": [\"ev1\"]}\n  ],\n  \"evidence\": [\n    {\"ev_id\"\
+    : \"ev1\", \"content\": \"借贷不平衡：借方合计 4700.00，贷方合计 4600.00，差额 100.00\", \"source_ref\": \"s1\"}\n \
+    \ ],\n  \"sources\": [{\"ref_id\": \"s1\", \"grade\": \"L1\", \"label\": \"预处理聚合校验\"}],\n  \"falsification\"\
+    : [\n    {\"signal\": \"冲销凭证过账\", \"threshold\": \"凭证类型 AB\", \"consequence\": \"原凭证失效\", \"check_frequency\"\
+    : \"event_driven\", \"checker_id\": \"reversal_posted\"}\n  ],\n  \"data_classification\": \"internal\"\
+    \n}\n"
+  - "{\n  \"conclusion\": \"rejected\",\n  \"confidence\": \"high\",\n  \"imbalance_amount\": 0.0,\n \
+    \ \"co_issues\": [\"行 1 损益科目 470200 未携带成本中心（SAP 报 KI235：Account requires an assignment to a CO object）\"\
+    ],\n  \"issues\": [\"损益科目缺 CO 成本对象分配\"],\n  \"suggestions\": [\"行 1 补充成本中心（如 CC-1001）后重试；若科目应为资产负债类，请核对科目主数据\"\
+    ],\n  \"findings\": [\n    {\"finding_id\": \"f1\", \"claim\": \"损益科目缺成本对象触发 FATAL\", \"evidence_refs\"\
+    : [\"ev1\"]}\n  ],\n  \"evidence\": [\n    {\"ev_id\": \"ev1\", \"content\": \"行 1 损益科目 470200 未携带成本中心\"\
+    , \"source_ref\": \"s1\"}\n  ],\n  \"sources\": [{\"ref_id\": \"s1\", \"grade\": \"L1\", \"label\"\
+    : \"预处理 CO 分配校验\"}],\n  \"falsification\": [\n    {\"signal\": \"冲销凭证过账\", \"threshold\": \"凭证类型 AB\"\
+    , \"consequence\": \"原凭证失效\", \"check_frequency\": \"event_driven\", \"checker_id\": \"reversal_posted\"\
+    }\n  ],\n  \"data_classification\": \"internal\"\n}\n"

@@ -34,7 +34,7 @@ vaf preset try credit_review        # 离线体验（样例输入 + 脚本化响
 vaf preset install credit_review    # 复制到 domains/ 即被自动发现 → 接上真实 LLM 即用
 ```
 
-预置已含**知识增强**：声明式规则库（`knowledge.yaml`）+ 检索节点把命中规则注入提示词（credit 的信贷风控 6 条、合同审查的民法典 10 条）；`vaf preset eval credit_review` 在配置 `VAF_LLM_*` 后输出真实准确率并过门禁（黄金集含 DTI/征信/用途边界用例）。
+预置已含**知识增强**：声明式规则库 + 检索注入（信贷 6 条 / 合同 10 条 / 法律 8 条 / 投研 8 条）；配 `VAF_EMBEDDING_BASE_URL/API_KEY/MODEL` 后检索自动升级为**语义向量检索**（OpenAI 兼容 /embeddings），未配置用关键词；`vaf preset eval <name>` 在配置 `VAF_LLM_*` 后输出真实准确率并过门禁——黄金集 48 例（含 DTI 0.50 恰界、征信 600 恰界、用途违规等边界）。
 
 `credit_review` 同时是**深度编排旗舰**（检索+澄清追问+大额路由人工审核四原语齐用）并附**代码风格孪生实现**（`presets/credit_review/credit_review_python/`）：
 同一领域两种写法对照，是理解"声明式何时够用、何时转代码"的最好教材。SAP FICO 预置则演示了

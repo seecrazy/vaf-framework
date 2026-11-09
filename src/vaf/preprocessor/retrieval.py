@@ -73,12 +73,15 @@ class RetrievalNode(EnrichNode):
         output_field: str = "knowledge",
         query_fields: Optional[List[str]] = None,
         retriever: Optional[Callable[[str, int], List[str]]] = None,
+        mode: str = "auto",
     ):
         self._path = path
         self.top_k = top_k
         self.output_field = output_field
         self.query_fields = query_fields
-        self._retriever = retriever
+        self._explicit_retriever = retriever
+        self._mode = mode  # keyword=强制关键词；auto=配置 embedding 环境变量时用向量
+        self._auto_retriever = None
         self._entries: Optional[List[Dict[str, Any]]] = None  # 懒加载一次
 
     def _load(self) -> List[Dict[str, Any]]:
@@ -86,12 +89,29 @@ class RetrievalNode(EnrichNode):
             self._entries = load_knowledge_base(self._path)
         return self._entries
 
+    def _resolve_retriever(self):
+        """优先级：显式注入 > auto（embedding 环境变量）> 关键词。"""
+        if self._explicit_retriever is not None:
+            return self._explicit_retriever
+        if self._mode == "keyword":
+            return None
+        if self._auto_retriever is None:
+            from ..llm.embedding import make_auto_retriever
+
+            entries = self._load()
+            self._auto_retriever = make_auto_retriever([e["text"].strip() for e in entries])
+        return self._auto_retriever
+
     def enrich(self, item: RawItem) -> Dict[str, Any]:
         import json
 
-        if self._retriever is not None:
+        retriever = self._resolve_retriever()
+        if retriever is not None:
             query = self._query_text(item)
-            hits = self._retriever(query, self.top_k)
+            if hasattr(retriever, "top_k"):  # EmbeddingRetriever 对象
+                hits = retriever.top_k(query, self.top_k)
+            else:  # Callable[[query, top_k], list]
+                hits = retriever(query, self.top_k)
             return {self.output_field: hits}
         entries = self._load()
         if not entries:

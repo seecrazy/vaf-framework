@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-FRAMEWORK_VERSION = "2.8.0"
+FRAMEWORK_VERSION = "2.9.0"
 
 
 class ExecutionPlan(BaseModel):

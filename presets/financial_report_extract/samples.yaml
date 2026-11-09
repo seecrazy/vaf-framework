@@ -1,89 +1,54 @@
-# financial_report_extract 预置领域离线样例（vaf preset try）
 inputs:
-  - name: 业绩快报（缺扣非 → partial + 数据缺口）
-    input:
-      raw_id: fr-sample-1
-      source: sse_announcement
-      timestamp: "2026-11-09T10:00:00"
-      company: 示例科技（688001）
-      period: 2026Q3
-      announcement_text: |
-        2026 年第三季度业绩快报（未经审计）：前三季度实现营业总收入
-        1,234,567,890.00 元，同比增长 12.34%；归属于上市公司股东的净利润
-        201,345,678.00 元。本报告数据为公司初步核算数据，最终以正式季度报告为准。
+- name: 业绩快报（缺扣非 → partial + 数据缺口）
+  input:
+    raw_id: fr-sample-1
+    source: sse_announcement
+    timestamp: '2026-11-09T10:00:00'
+    company: 示例科技（688001）
+    period: 2026Q3
+    announcement_text: '2026 年第三季度业绩快报（未经审计）：前三季度实现营业总收入
 
-  - name: 正式年报节选（口径齐备 → complete）
-    input:
-      raw_id: fr-sample-2
-      source: sse_announcement
-      timestamp: "2026-11-09T10:01:00"
-      company: 示例制造（600001）
-      period: 2026FY
-      announcement_text: |
-        2026 年年度报告（节选）：全年营业收入 8,765,432,100.00 元，同比增长 5.67%；
-        归属于上市公司股东的净利润 987,654,321.00 元；扣除非经常性损益后
-        归属于上市公司股东的净利润 901,234,567.00 元。本报告经审计。
-        报告期内完成对西南生产基地的收购。
+      1,234,567,890.00 元，同比增长 12.34%；归属于上市公司股东的净利润
 
+      201,345,678.00 元。本报告数据为公司初步核算数据，最终以正式季度报告为准。
+
+      '
+  expected: partial
+- name: 正式年报节选（口径齐备 → complete）
+  input:
+    raw_id: fr-sample-2
+    source: sse_announcement
+    timestamp: '2026-11-09T10:01:00'
+    company: 示例制造（600001）
+    period: 2026FY
+    announcement_text: '2026 年年度报告（节选）：全年营业收入 8,765,432,100.00 元，同比增长 5.67%；
+
+      归属于上市公司股东的净利润 987,654,321.00 元；扣除非经常性损益后
+
+      归属于上市公司股东的净利润 901,234,567.00 元。本报告经审计。
+
+      报告期内完成对西南生产基地的收购。
+
+      '
+  expected: complete
 responses:
   extract_metrics:
-    - |
-      {
-        "revenue": 1234567890.0,
-        "net_profit": 201345678.0,
-        "deducted_net_profit": null,
-        "yoy_growth_pct": 12.34,
-        "key_events": ["业绩快报为初步核算口径，未经审计"]
-      }
-    - |
-      {
-        "revenue": 8765432100.0,
-        "net_profit": 987654321.0,
-        "deducted_net_profit": 901234567.0,
-        "yoy_growth_pct": 5.67,
-        "key_events": ["完成对西南生产基地的收购"]
-      }
+  - "{\n  \"revenue\": 1234567890.0,\n  \"net_profit\": 201345678.0,\n  \"deducted_net_profit\": null,\n\
+    \  \"yoy_growth_pct\": 12.34,\n  \"key_events\": [\"业绩快报为初步核算口径，未经审计\"]\n}\n"
+  - "{\n  \"revenue\": 8765432100.0,\n  \"net_profit\": 987654321.0,\n  \"deducted_net_profit\": 901234567.0,\n\
+    \  \"yoy_growth_pct\": 5.67,\n  \"key_events\": [\"完成对西南生产基地的收购\"]\n}\n"
   assess_quality:
-    - |
-      {
-        "conclusion": "partial",
-        "confidence": "high",
-        "missing_items": ["扣非归母净利润"],
-        "revision_warning": true,
-        "findings": [
-          {"finding_id": "f1", "claim": "业绩快报未经审计且未披露扣非口径", "evidence_refs": ["ev1"]}
-        ],
-        "evidence": [
-          {"ev_id": "ev1",
-           "content": "本报告数据为公司初步核算数据，最终以正式季度报告为准",
-           "source_ref": "s1"}
-        ],
-        "sources": [{"ref_id": "s1", "grade": "L1", "label": "交易所公告原文"}],
-        "falsification": [
-          {"signal": "正式季度报告发布", "threshold": "正式报告披露扣非净利",
-           "consequence": "以正式口径替换快报数字", "check_frequency": "event_driven",
-           "checker_id": "formal_report_published"}
-        ],
-        "data_gaps": [
-          {"item": "扣非归母净利润", "reason": "not_disclosed", "impact": "significant"}
-        ]
-      }
-    - |
-      {
-        "conclusion": "complete",
-        "confidence": "high",
-        "missing_items": [],
-        "revision_warning": false,
-        "findings": [
-          {"finding_id": "f1", "claim": "四项法定指标齐备且经审计", "evidence_refs": ["ev1"]}
-        ],
-        "evidence": [
-          {"ev_id": "ev1", "content": "全年营业收入…归母净利润…扣非…本报告经审计",
-           "source_ref": "s1"}
-        ],
-        "sources": [{"ref_id": "s1", "grade": "L1", "label": "交易所公告原文"}],
-        "falsification": [
-          {"signal": "年报更正公告", "threshold": "发布更正/补充公告",
-           "consequence": "重新抽取并复核", "check_frequency": "event_driven"}
-        ]
-      }
+  - "{\n  \"conclusion\": \"partial\",\n  \"confidence\": \"high\",\n  \"missing_items\": [\"扣非归母净利润\"\
+    ],\n  \"revision_warning\": true,\n  \"findings\": [\n    {\"finding_id\": \"f1\", \"claim\": \"业绩快报未经审计且未披露扣非口径\"\
+    , \"evidence_refs\": [\"ev1\"]}\n  ],\n  \"evidence\": [\n    {\"ev_id\": \"ev1\",\n     \"content\"\
+    : \"本报告数据为公司初步核算数据，最终以正式季度报告为准\",\n     \"source_ref\": \"s1\"}\n  ],\n  \"sources\": [{\"ref_id\"\
+    : \"s1\", \"grade\": \"L1\", \"label\": \"交易所公告原文\"}],\n  \"falsification\": [\n    {\"signal\": \"\
+    正式季度报告发布\", \"threshold\": \"正式报告披露扣非净利\",\n     \"consequence\": \"以正式口径替换快报数字\", \"check_frequency\"\
+    : \"event_driven\",\n     \"checker_id\": \"formal_report_published\"}\n  ],\n  \"data_gaps\": [\n\
+    \    {\"item\": \"扣非归母净利润\", \"reason\": \"not_disclosed\", \"impact\": \"significant\"}\n  ]\n}\n"
+  - "{\n  \"conclusion\": \"complete\",\n  \"confidence\": \"high\",\n  \"missing_items\": [],\n  \"revision_warning\"\
+    : false,\n  \"findings\": [\n    {\"finding_id\": \"f1\", \"claim\": \"四项法定指标齐备且经审计\", \"evidence_refs\"\
+    : [\"ev1\"]}\n  ],\n  \"evidence\": [\n    {\"ev_id\": \"ev1\", \"content\": \"全年营业收入…归母净利润…扣非…本报告经审计\"\
+    ,\n     \"source_ref\": \"s1\"}\n  ],\n  \"sources\": [{\"ref_id\": \"s1\", \"grade\": \"L1\", \"\
+    label\": \"交易所公告原文\"}],\n  \"falsification\": [\n    {\"signal\": \"年报更正公告\", \"threshold\": \"发布更正/补充公告\"\
+    ,\n     \"consequence\": \"重新抽取并复核\", \"check_frequency\": \"event_driven\"}\n  ]\n}\n"

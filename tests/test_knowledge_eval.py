@@ -140,11 +140,18 @@ def test_preset_eval_live_mode_with_fake_llm(monkeypatch, fake_llm):
 
     monkeypatch.setenv("VAF_LLM_BASE_URL", fake_llm.base_url)
     monkeypatch.setenv("VAF_LLM_MODEL", "test-model")
+    import yaml
+
+    golden = yaml.safe_load(
+        open(preset_path("credit_review").parent / "golden.yaml", encoding="utf-8")
+    )
+    samples = yaml.safe_load(
+        open(preset_path("credit_review").parent / "samples.yaml", encoding="utf-8")
+    )
     report, mode = preset_eval("credit_review")
     assert mode == "live"
-    assert report.total == 4 + 7  # samples + golden.yaml 七个扩充用例
-    # 假服务返回固定 technical 响应——契约不匹配会失败，此处验证机制而非常数
-    assert report.cases[0].case_id.startswith("良好申请人") or report.cases
+    assert report.total == len(samples["inputs"]) + len(golden["cases"])  # samples + golden 全参与
+    # 假服务返回固定响应——多数用例契约不匹配而失败，此处验证 live 机制（数量），非常数断言准确率
 
 
 def test_golden_yaml_inputs_pass_contract():

@@ -98,3 +98,115 @@ cases:
       credit_score: 710
       employment: retired
       loan_purpose: 旅游
+
+  - name: 黄金-期限极短小额快贷
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g8
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 5000
+      term_months: 3
+      monthly_income: 15000
+      monthly_debt_payment: 0
+      credit_score: 690
+      employment: stable_employed
+      loan_purpose: 旅游
+
+  - name: 黄金-期限最长120月
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g9
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 400000
+      term_months: 120
+      monthly_income: 40000
+      monthly_debt_payment: 3000
+      credit_score: 680
+      employment: stable_employed
+      loan_purpose: 装修
+
+  - name: 黄金-用途股市违规
+    expected_conclusion: rejected
+    input:
+      raw_id: g10
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 200000
+      term_months: 12
+      monthly_income: 20000
+      monthly_debt_payment: 1000
+      credit_score: 710
+      employment: stable_employed
+      loan_purpose: 炒股加杠杆
+
+  - name: 黄金-自雇无流水佐证
+    expected_conclusion: manual_review
+    input:
+      raw_id: g11
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 250000
+      term_months: 36
+      monthly_income: 28000
+      monthly_debt_payment: 2000
+      credit_score: 640
+      employment: self_employed
+      loan_purpose: 经营周转
+
+  - name: 黄金-合同工低负债
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g12
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 120000
+      term_months: 24
+      monthly_income: 11000
+      monthly_debt_payment: 500
+      credit_score: 660
+      employment: contract
+      loan_purpose: 教育
+
+  - name: 黄金-DTI恰好0.50边界
+    expected_conclusion: rejected
+    input:
+      raw_id: g13
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 500000
+      term_months: 36
+      monthly_income: 25000
+      monthly_debt_payment: 10000
+      credit_score: 700
+      employment: stable_employed
+      loan_purpose: 装修
+
+  - name: 黄金-征信恰好600通过线
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g14
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 100000
+      term_months: 24
+      monthly_income: 20000
+      monthly_debt_payment: 1000
+      credit_score: 600
+      employment: stable_employed
+      loan_purpose: 教育
+
+  - name: 黄金-大额灰区需人工
+    expected_conclusion: manual_review
+    input:
+      raw_id: g15
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 2000000
+      term_months: 60
+      monthly_income: 90000
+      monthly_debt_payment: 30000
+      credit_score: 630
+      employment: stable_employed
+      loan_purpose: 经营

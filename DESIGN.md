@@ -1,4 +1,4 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.8 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.9 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
@@ -182,7 +182,7 @@ SkillOutput (pydantic, extra=forbid)
 
 ### 5.4 内置组件库（`preprocessor/builtin.py`）
 
-`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）、**`DocumentExtractNode`（V2.7：http(s)/本地/data: URL 文档文本抽取，html 剥标签；PDF/DOCX 注入自定义 extractor）**、**`RetrievalNode`（V2.8：YAML 规则库 + BM25-lite 关键词检索，命中条目经 enriched.knowledge 注入提示词；可注入向量检索 retriever）**。
+`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）、**`DocumentExtractNode`（V2.7：http(s)/本地/data: URL 文档文本抽取，html 剥标签；PDF/DOCX 注入自定义 extractor）**、**`RetrievalNode`（V2.8 起：YAML 规则库 + BM25-lite 关键词检索；V2.9 增 `mode: auto`——配置 `VAF_EMBEDDING_BASE_URL/API_KEY/MODEL` 后自动升级为向量检索（条目向量懒加载缓存 + 余弦 top-k，OpenAI 兼容 /embeddings），未配置回退关键词；命中条目经 enriched.knowledge 注入提示词，Python 路径亦可注入任意 retriever）**。
 
 ### 5.5 执行顺序
 
@@ -528,8 +528,8 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 | credit_review 个人信贷预审 | DTI 审慎线 50%、征信人工线 600/拒线 450、用途监管禁止流向 | 零代码 YAML + **代码风格孪生包**（同领域两种接入方式对照教学，孪生演示确定性 DTI 推算节点 + 高金额人工审核） |
 | contract_risk_review 合同风险审查 | 民法典 585 条违约金调减（损失 30% 参照）、民诉法协议管辖、496 条格式条款 | 零代码 YAML |
 | financial_report_extract 公告抽取 | 定期报告披露格式、来源分级 L1/L2/L3、快报与年报口径差异、缺项必须 data_gaps | 零代码 YAML |
-| legal_case_assessment 民商事案件评估 | 民事证明标准"高度盖然性"（最高法证据规定）、民法典 188 条 3 年时效、劳动仲裁前置与 1 年时效（27 条）、保全/公告送达策略；输出强制"不构成法律意见" | 零代码 YAML |
-| investment_research_note 投资研究评审 | 扣非净利与经营现金流交叉验证、商誉年度减值测试（CAS 8）、估值方法适用边界（DCF/PE/PB/EV-EBITDA/PS）；合规设计：不做投资建议、输出强制免责标签 | 零代码 YAML |
+| legal_case_assessment 民商事案件评估 | 规则库 8 条检索注入（高度盖然性/举证责任/证据形式/188 条时效/劳动仲裁前置/保全/公告送达/成本收益）；输出强制"不构成法律意见" | 零代码 YAML |
+| investment_research_note 投资研究评审 | 规则库 8 条检索注入（盈利质量/商誉减值 CAS8/应收信号/非经常损益/估值适配/存贷双高/披露口径/研究合规免责） | 零代码 YAML |
 | document_review 通用文档审查 | 非结构化入口：document_url（http/本地/data:URL）→ 预处理确定性抽取 → {{ enriched.document_text }} 进提示词；纯文本/html 内置，PDF 走注入 extractor | 零代码 YAML |
 | sap_fico_journal_check 总账凭证检查 | 借贷合计强制平衡、损益科目缺成本对象→KI235 类报错（FI/CO 集成）、冲销凭证类型 AB；**跨行求和超出声明式预处理能力 → Python 变体作为"何时必须写代码"教学案例** | Python 包 |
 
@@ -570,4 +570,14 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
   `vaf preset eval <name>`——配 VAF_LLM_* 得真实准确率与门禁，离线模式为机制演示；
 - 框架修复：① 低代码输出契约领域字段一律可选（C5 复现修复：哨兵场景不再逼造）；
   ② interaction 步骤成功路径补证伪实时回检。
+
+### V2.9 知识/评测收尾（评审剩余三项清零）
+- **向量检索**：`llm/embedding.py`——OpenAI 兼容 /embeddings 客户端（零依赖）+
+  EmbeddingRetriever（条目向量懒加载缓存、余弦 top-k）；RetrievalNode `mode: auto`
+  （默认）配置 `VAF_EMBEDDING_*` 三环境变量即自动升级语义检索，未配置回退关键词；
+- **检索全覆盖**：legal_case_assessment（8 条）与 investment_research_note（8 条）
+  规则库接入——七个预置中四个知识密集型领域全部检索增强；
+- **黄金集 48 例**：credit 19（samples 4 + golden 15，含 DTI 0.50 恰界/征信 600
+  恰界/股市用途/自雇/期限极值）、contract 10、investment 10、其余领域 samples
+  全部标注 expected；全部用例经输入契约校验（参数化测试锁定）。
 

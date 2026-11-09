@@ -35,6 +35,9 @@ outputs:
 preprocessor:
   validators:
     - {type: field_presence, fields: [company, filings_text]}
+  enrichers:
+    - {type: retrieval, path: knowledge.yaml, top_k: 3, output_field: knowledge,
+       query_fields: [filings_text, industry_context, my_thesis]}
 
 skills:
   - name: review_thesis
@@ -46,7 +49,9 @@ skills:
       行业背景：{{ input.industry_context }}
       待验证逻辑：{{ input.my_thesis }}
 
-      评审规则：
+      【检索到的适用规则】{{ enriched.knowledge }}
+
+      评审规则（检索命中的规则优先适用）：
       1. 对 my_thesis 做证据核查：每个 bull/bear point 必须引用输入中的具体数字，
          不得使用输入之外的市场传闻（sources 分级：公告 L1 / 行业转述 L2）；
       2. 盈利质量交叉验证：扣非净利 vs 经营现金流净额的背离要显式指出；

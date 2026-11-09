@@ -409,6 +409,7 @@ def _node_retrieval(spec: Dict[str, Any], base_dir: Optional[str] = None):
         top_k=int(spec.get("top_k", 3)),
         output_field=spec.get("output_field", "knowledge"),
         query_fields=spec.get("query_fields"),
+        mode=spec.get("mode", "auto"),
     )
 
 

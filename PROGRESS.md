@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.8.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **253 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.9.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **277 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -126,6 +126,18 @@
   （配 VAF_LLM_* 真实准确率+门禁；离线=机制演示）；
 - 修复：低代码输出领域字段必填逼造（C5 复现）；interaction 步骤漏证伪实时回检；
 - 测试 241 → **253**（检索排序/注入/旗舰四终局/规则命中注入/离线与 live 评估/黄金用例契约校验）。
+
+
+### 2026-11-09（第十批）· V2.9.0 —— 知识/评测收尾（评审剩余三项清零）
+- 向量检索：llm/embedding.py（OpenAI 兼容 /embeddings，零依赖）+ EmbeddingRetriever
+  （懒加载缓存/余弦 top-k）；RetrievalNode mode:auto 配 VAF_EMBEDDING_* 自动升级，
+  未配置回退关键词（V2.8 行为不变）；
+- legal/investment 规则库各 8 条接入检索——知识密集预置全部检索增强
+  （credit 6 条 + contract 10 条 + legal 8 条 + investment 8 条 = 32 条规则）；
+- 黄金集 48 例（credit 19 / contract 10 / investment 10 / 其余 samples expected
+  全标注）；参数化测试：全部预置离线评估过门禁 + 全部用例过输入契约；
+- 测试 253 → **277**（假 embedding 服务语义排序/缓存/auto 升级与 keyword 强制/
+  两个新规则库命中注入/全预置参数化校验/黄金总量阈值）。
 
 ## 测试基线
 

@@ -38,6 +38,9 @@ preprocessor:
   validators:
     - {type: field_presence, fields: [case_facts, case_type]}
     - {type: pii_detection, fields: [case_facts]}
+  enrichers:
+    - {type: retrieval, path: knowledge.yaml, top_k: 3, output_field: knowledge,
+       query_fields: [case_facts, case_type, evidence_list, key_dates]}
 
 skills:
   - name: assess_case
@@ -50,7 +53,9 @@ skills:
       已有证据：{{ input.evidence_list }}；争议标的额：{{ input.dispute_amount }}；
       关键时间：{{ input.key_dates }}；严格时效模式：{{ config['legal.strict_limitation_mode'] }}
 
-      评估规则：
+      【检索到的适用规则】{{ enriched.knowledge }}
+
+      评估规则（检索命中的规则优先适用）：
       1. 按"高度盖然性"标准评估：主张要件事实的证据是否形成链条；
          书证原件>复印件，转账凭证需与借贷合意证据相互印证；
       2. 时效：普通时效 3 年（民法典 188 条）；劳动争议仲裁时效 1 年

@@ -6,6 +6,7 @@ inputs:
     timestamp: '2026-11-09T10:00:00'
     doc_kind: contract
     document_url: data:text/plain;base64,5pyN5Yqh5Y2P6K6u77yI6IqC6YCJ77yJCuesrCA1IOadoSDmnI3liqHmnJ/pmZDvvJrmnKzljY/orq7oh6rnrb7nvbLkuYvml6XotbcgMTIg5Liq5pyI77yM5pyf5ruh5YmNIDMwIOaXpeacquS5pumdouW8guiuruWImeiHquWKqOe7ree6piAxMiDkuKrmnIjjgIIK56ysIDgg5p2hIOi/nee6pui0o+S7u++8muS5meaWuemAvuacn+S7mOasvueahO+8jOavj+aXpeaMieacquS7mOasvumhueeahCAzJSDmlK/ku5jov53nuqbph5HvvJvntK/orqHkuI3otoXov4fmnKrku5jmrL7pobnnmoQgMjAwJeOAggrnrKwgMTIg5p2hIOS6ieiuruino+WGs++8muaPkOS6pOeUsuaWueaJgOWcqOWcsOacieeuoei+luadg+eahOS6uuawkeazlemZouivieiuvOino+WGs+OAggo=
+  expected: high_risk
 - name: 经营简报（应收激增 → 疑点）
   input:
     raw_id: dr-sample-2
@@ -13,6 +14,7 @@ inputs:
     timestamp: '2026-11-09T10:01:00'
     doc_kind: report
     document_url: data:text/plain;base64,5a2j5bqm57uP6JCl566A5oql77yI6IqC6YCJ77yJClEzIOiQpeaUtiAyLjMg5Lq/5YWD77yM546v5q+U5aKe6ZW/IDgl77yb57uP6JCl546w6YeR5rWB5YeA6aKdIDAuNCDkur/lhYPvvIzkvY7kuo7lh4DliKnmtqYgMC42IOS6v+WFg++8mwrlupTmlLbotKbmrL7kvZnpop0gMS4xIOS6v+WFg++8jOi+g+S4iuWto+W6puacqyAwLjcg5Lq/5YWD5aKe6ZW/IDU3Je+8jOS4u+imgeWboOWkp+WuouaIt+i0puacn+eUsSA2MCDlpKnosIPmlbTkuLogOTAg5aSp44CCCuaXoOaWsOWinuWvueWkluaLheS/neOAggo=
+  expected: medium_risk
 responses:
   review_doc:
   - "{\n \"conclusion\": \"high_risk\", \"confidence\": \"high\",\n \"summary\": \"12 个月服务协议，含自动续约与高额逾期违约金条款，争议由甲方所在地法院管辖。\"\
