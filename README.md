@@ -20,6 +20,8 @@ pip install -e ".[test]"
 vaf demo        # 离线全流程演示（零 API Key、零外部服务）：
                 # 澄清回路 → 人工审核 → 路由探测 → 零代码领域 → 评估门禁
 pytest          # 全量测试，约 1 秒
+
+# 需要 HTTP 网关/H5 审核台时：pip install "vaf[api]"（见"部署与运维"）
 ```
 
 跑通 demo 后，按需走下面三条接入路径之一。
@@ -42,7 +44,7 @@ vaf preset install credit_review    # 复制到 domains/ 即被自动发现 → 
 
 ## 接入路径二：零代码（一个 YAML 文件）
 
-从预置复制一份改，或按下面的骨架手写（完整能力见 [DESIGN.md §21](DESIGN.md)）：
+从预置复制一份改，或按下面的骨架手写（**全字段参考见 [DESIGN.md §21.6](DESIGN.md#216-全字段-yaml-参考)**）：
 
 ```yaml
 # domains/credit_review.domain.yaml —— 放进 domains/ 即被自动发现
@@ -61,7 +63,7 @@ skills:
     output: decision
     prompt: |
       月收入 {{ input.monthly_income }}，负债收入比 {{ input.dti }}。
-      硬规则：DTI>0.7 reject；0.5~0.7 manual_review；否则 approve。
+      硬规则：DTI≥0.50 reject；0.40~0.50 manual_review（给降额建议）；否则 approve。
   - name: clarify                      # 信息不足时的澄清技能（配合下方 interaction 步骤）
     type: analysis
     output: decision
@@ -280,13 +282,23 @@ L4 Runtime       编排运行时：开闭式步骤处理器（skill/review/inter
 | 模型路由 fail-closed | confidential 数据无合规端点直接拒绝 | `register_model_endpoint(allowed_classifications=…)` |
 | 评估门禁 | 黄金集跑分 + 结论准确率阈值阻断发布 | `vaf eval` / `EvalRunner` |
 | 移动闭环 | 消息卡片 → H5 审批/澄清 → 自动续跑，零 App | `vaf serve` + `--notify-card` |
+| MCP 工具生态 | 一行注册任意 MCP 服务器，工具进白名单 | `register_mcp_server(app, name=…, command=[…])` |
+| 证伪定时回检 | 扫历史 run 重跑证伪条件 → 处置闭环（失效+重跑建议+审计） | `vaf falsify sweep` |
+| 语义向量检索 | 规则库检索自动升级 embedding（未配置回退关键词） | 配 `VAF_EMBEDDING_*`（OpenAI 兼容 /embeddings） |
+| 实时事件流 | 审核/澄清/run 终态 SSE 推送（H5 自动刷新） | `GET /api/v1/events/stream` |
 
-## 示例领域（均可离线运行）
+## 示例与预置（均可离线运行）
 
-- `domains/medical_triage/` — 澄清回路 + emergency 人工审核（超时 reject）+ 低置信终审降级 + 体温证伪回检 + 运行期配置阈值 + SQLite 跨实例续跑
-- `domains/ops_incident/` — 假设置信度路由 + 工具探测循环 + 子流程报告 + 失败断点续跑 + 工具补偿
-- `domains/customer_ticket.domain.yaml` — 零代码领域：契约/抽取/分类/终审降级/表达式证伪全在一个文件
-- `presets/` — 预置领域库（信贷含代码孪生、合同、公告、法律诉讼、投资研究、SAP FICO），`vaf preset list` 看全部
+**`domains/`（教学示例——框架能力的最小演示）：**
+- `medical_triage/` — 澄清回路 + emergency 人工审核（超时 reject）+ 低置信终审降级 + 体温证伪回检 + 运行期配置阈值 + SQLite 跨实例续跑
+- `ops_incident/` — 假设置信度路由 + 工具探测循环 + 子流程报告 + 失败断点续跑 + 工具补偿
+- `customer_ticket.domain.yaml` — 零代码领域：契约/抽取/分类/终审降级/表达式证伪全在一个文件
+
+**`presets/`（生产预置——真实领域知识 + 黄金集基线，`vaf preset list` 看全部 8 个）：**
+- `credit_review/` — **深度编排旗舰**：`vaf preset try credit_review` 看 4 种终局（直通/灰区/审核暂停/澄清暂停），另附代码孪生
+- `contract_risk_review/`、`legal_case_assessment/`、`investment_research_note/` — 规则库检索注入（民法典 10 条/证据规则 8 条/投研检查单 8 条）
+- `ambient_clinical_notes/` — 行业唯一跑通的医疗模式：医患对话→SOAP 草稿，强制医生签核
+- `financial_report_extract/`、`document_review/`、`sap_fico_journal_check/`（Python 变体：跨行求和需自定义节点）
 
 ## 边界声明
 
@@ -297,21 +309,27 @@ L4 Runtime       编排运行时：开闭式步骤处理器（skill/review/inter
 ## 目录结构
 
 ```
-DESIGN.md  PROGRESS.md  README.md  pyproject.toml
+DESIGN.md  PROGRESS.md  README.md  CHANGELOG.md  pyproject.toml
+.github/workflows/ci.yml            CI（install→ruff→pytest）
 src/vaf/
   contract/    L1 契约（base / falsification / builders 快速构造器）
-  preprocessor/  L2 节点与流水线（nodes / pipeline / builtin）
+  preprocessor/  L2 节点与流水线（nodes / pipeline / builtin /
+               document 文档抽取 / retrieval 规则库检索）
   skill/       L3 技能（base / executor / prompt / memory / grounding）
   runtime/     L4 运行时（engine / handlers 步骤处理器 / steps / state /
                persistence[SQLite/Redis] / snapshot / review / expression /
-               notification / discovery / config_view）
-  llm/         LLM 抽象（client / router / mock）
-  tools/  security/  observe/  config/  eval/     横切能力
-  api/         移动接入（gateway / auth / cards / static H5 审核台）
+               notification 异步通知 / discovery / config_view）
+  llm/         LLM 抽象（client / router / mock / openai_compat 内置客户端 /
+               embedding 向量检索）
+  tools/       工具适配（registry / adapter / mcp MCP 接入）
+  security/    脱敏 / RBAC / 审计（链式哈希）
+  observe/     指标 / 链路 / 事件（Prometheus 文本导出）
+  config/  eval/（黄金集 / 门禁 / judge 治理 / llm_judge / drift）     横切能力
+  api/         移动接入（gateway / auth / cards 消息卡片 / static H5 审核台）
   lowcode.py   零代码装配    presets.py  预置库
   app.py  cli.py  demo_llm.py
-domains/       示例领域（2 个 Python + 1 个零代码 YAML）
-presets/       预置领域库（低代码 YAML / Python 变体 + 离线样例）
+domains/       教学示例（2 个 Python + 1 个零代码 YAML）
+presets/       生产预置 8 个（低代码 YAML / Python 变体 + 规则库 + 黄金集）
 tests/         全量测试（数量见 PROGRESS.md）
 scripts/       开发期手动验证脚本
 ```

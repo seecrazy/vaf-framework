@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..errors import PermissionDeniedError, VafError
+from ..runtime.snapshot import FRAMEWORK_VERSION
 from ..security.permissions import Permission, User
 from .auth import _ADMIN, ApiKeyStore
 
@@ -81,7 +82,7 @@ def create_gateway(
 ) -> "FastAPI":
     api = FastAPI(
         title="VAF Gateway",
-        version="2.5.0",
+        version=FRAMEWORK_VERSION,
         description="垂直领域 Agent 框架 HTTP 网关：run 提交 / 澄清 / 人工审核 / 预置领域",
     )
     open_mode = keys is None or not keys.enabled

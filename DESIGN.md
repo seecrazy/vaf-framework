@@ -64,18 +64,20 @@
 - [十九、能力边界声明（继承 V1.1 并修订）](#十九-能力边界声明-继承-v1-1-并修订)
 - [二十、路线图（修订版，B9 / V2.1 更新）](#二十-路线图-修订版-b9-v2-1-更新)
 - [二十一、零代码领域接入（V2.2，`vaf/lowcode.py`）](#二十一-零代码领域接入-v2-2-vaf-lowcode-py)
+  - [21.6 全字段 YAML 参考](#21-6-全字段-yaml-参考)
 - [二十二、预置领域库（V2.3，`vaf/presets.py` + `presets/`）](#二十二-预置领域库-v2-3-vaf-presets-py-presets)
 - [二十三、移动接入层（V2.5，`vaf/api/`）](#二十三-移动接入层-v2-5-vaf-api)
   - [V2.8 知识与评测增强（对应预置质量差距评审的三项落地）](#v2-8-知识与评测增强-对应预置质量差距评审的三项落地)
   - [V2.9 知识/评测收尾（评审剩余三项清零）](#v2-9-知识-评测收尾-评审剩余三项清零)
+- [二十四、V2.10 变更摘要（机制详设已并入正章）](#二十四-v2-10-变更摘要-机制详设已并入正章)
 
 ## 一、V1.1 → V2.0 修订说明（问题响应矩阵）
 
 | # | V1.1 问题 | 严重级 | V2.0 对策 | 落点 |
 |---|---|---|---|---|
-| A1 | 多轮交互回路缺失，`insufficient_data` 是死胡同 | P0 | 新增 **InteractionStep**：技能输出澄清问题 → 流程暂停 WAITING_INPUT → 外部提交答案 → 注入状态 → 重入技能，带轮次上限 | §7.6 / `runtime/steps.py` |
-| A2 | 固定 DAG 表达不了探索式推理（RCA 场景错配） | P0 | 新增 **RouterStep**（运行时按状态选下一跳）与 **SubPipelineStep**（子流程），动态性约束在已声明步骤集合内 | §7.7 / §7.8 |
-| A3 | 断点续跑 × 热更新 = 版本漂移深坑 | P0 | **执行计划快照（ExecutionPlan）**：run 发起时固化 框架/Pipeline/技能/提示词/配置/模型路由 全版本指纹，续跑校验指纹，不匹配即 fail-fast | §7.10 / `runtime/snapshot.py` |
+| A1 | 多轮交互回路缺失，`insufficient_data` 是死胡同 | P0 | 新增 **InteractionStep**：技能输出澄清问题 → 流程暂停 WAITING_INPUT → 外部提交答案 → 注入状态 → 重入技能，带轮次上限 | §7.6 / `runtime/handlers.py` |
+| A2 | 固定 DAG 表达不了探索式推理（RCA 场景错配） | P0 | 新增 **RouterStep**（运行时按状态选下一跳）与 **SubPipelineStep**（子流程），动态性约束在已声明步骤集合内 | §7.7 / §7.8 / `runtime/handlers.py` |
+| A3 | 断点续跑 × 热更新 = 版本漂移深坑 | P0 | **执行计划快照（ExecutionPlan）**：run 发起时固化 框架/Pipeline/技能/提示词/配置/模型路由 全版本指纹，续跑校验指纹，不匹配即 fail-fast | §7.10 / `runtime/snapshot.py`（执行体在 engine/handlers） |
 | A4 | 生成类技能流式输出与事后合规校验冲突 | P0 | **滚动校验流式协议**：checkpoint 分段校验 + 尾部 holdback 缓冲，违规即熔断流 | §9 / `skill/executor.py` |
 | A5 | 证伪只有检测没有处置 | P0 | **处置服务**：触发 → 影响面查询（哪些 run 引用该结论）→ 通知 → 标记失效 → 建议重跑，处置动作全留痕 | §6.4 / `contract/falsification.py` |
 | C1 | Pydantic v1/v2 混用跑不起来 | P1 | 全面 Pydantic v2（`ConfigDict`），Python ≥3.10 语法 | 全部 |
@@ -395,6 +397,9 @@ engine.register_step_handler(MyHandler())  # 新步骤类型 = 注册一个处�
 clarification_requested / falsification_triggered / run_finished 推给 sinks；
 `webhook_sink(url, secret=...)`：POST JSON + HMAC-SHA256 签名头、超时与重试、
 显式绕过系统代理（内网直连）、失败只记指标绝不阻塞主流程。
+**异步投递（V2.10）**：默认后台单线程 + 有界队列（满则丢弃计数保 run 不卡），
+`flush(timeout_s)` 支持优雅停机；外部 IM/webhook 的网络状况不阻塞引擎线程。
+`async_delivery=False` 保留同步语义（测试/调试）。
 
 ---
 
@@ -418,6 +423,11 @@ clarification_requested / falsification_triggered / run_finished 推给 sinks；
 2. 按 skill.model_tier 偏好选择，同层多端点按熔断状态与错误率选择；
 3. 熔断器：滑动窗口错误率超阈值 → open（冷却期）→ half-open 探测，期间自动切换 fallback tier。
 路由 digest 计入快照。
+
+**Embedding 客户端与向量检索（V2.9，`llm/embedding.py`）**：OpenAI 兼容 /embeddings
+客户端（`VAF_EMBEDDING_BASE_URL / API_KEY / MODEL` 三环境变量，纯标准库）+
+`EmbeddingRetriever`（规则库条目向量懒加载缓存，余弦 top-k）。与 §5.4 RetrievalNode
+的 `mode: auto` 联动：配置即语义检索，未配置回退关键词。
 
 ### 8.4 测试替身（`llm/mock.py`）
 
@@ -495,6 +505,12 @@ User→Role→Permission；Permission 覆盖 run/submit/config_write/review_appr
 5. 审计 + 指标；
 6. has_side_effect 且非幂等 → 执行前登记补偿（undo 回调）到 state.side_effects。
 
+**MCP 工具接入（V2.10，`tools/mcp.py`）**：stdio JSON-RPC 2.0 客户端（initialize 握手 →
+tools/list → tools/call，纯标准库）。`register_mcp_server(app, name="search",
+command=["python", "mcp_server.py"])` 一行接入任意 MCP 服务器，其工具以
+`<name>_<tool>` 注册进 ToolRegistry 并进入技能白名单体系（inputSchema 直译为
+params_schema，副作用未知按保守策略标 has_side_effect）。子进程随 app.close() 终结。
+
 ---
 
 ## 十六、示例领域设计
@@ -531,8 +547,10 @@ CLI（`python3 -m vaf.cli` / console_script `vaf`）：
 ## 十八、测试策略
 
 - 单元：契约校验器（哨兵豁免/引用闭合/推导强制字段）、预处理异常捕获矩阵、表达式引擎（含攻击样本：dunder/调用任意函数/import）、自修复重试、流式 holdback、路由 fail-closed、幂等、快照不匹配、审核超时、错误记忆生命周期、脱敏、漂移、快速构造器、模板路由、灰度分桶、Redis 存储、webhook（本地 HTTP 服务 + HMAC 签名）；
-- 端到端：medical_triage（澄清→审核→通过）、ops_incident（路由→探测循环→子流程）、断点续跑、证伪触发处置、自定义步骤类型（开闭性验证）、GenerationStep 流式编排、配置热更阻塞旧 run 续跑；
-- 全部测试基于 ScriptedMockLLM，零外部依赖、CI 可跑。
+- 集成（V2.10 起）：本地 OpenAI 兼容假服务（请求格式/鉴权头/SSE 流式/429 重试/零代码领域经真实 HTTP）、本地假 MCP 服务器子进程（工具注册/调用/错误传播/技能管线端到端）、本地假 embedding 服务（语义排序/向量缓存/auto 升级与强制关键词）、SSE 事件流端点；
+- 端到端：medical_triage（澄清→审核→通过）、ops_incident（路由→探测循环→子流程）、断点续跑、证伪触发处置与 sweep 回检、自定义步骤类型（开闭性验证）、GenerationStep 流式编排、配置热更阻塞旧 run 续跑、缓存淘汰（LRU/等待态保留）、通知异步（慢 sink 不阻塞）、审计链式哈希篡改检测；
+- 预置参数化：全部预置离线评估过门禁 + samples/golden 全部用例过输入契约（防手写错例）+ 黄金总量阈值；
+- 全部测试零外部依赖、CI 可跑（Actions: install→ruff→pytest）。
 
 ---
 
@@ -576,6 +594,65 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 
 示例：`domains/customer_ticket.domain.yaml`（工单分类：抽取+分类+低置信终审降级+
 表达式证伪，零 Python）；演示见 `vaf demo` 场景 [3]。
+
+---
+
+
+### 21.6 全字段 YAML 参考
+
+**input.fields 条目**：
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| name | str | 必填 | 字段名 |
+| type | str | "str" | str/string/int/integer/float/number/bool/boolean/list/array/dict/object |
+| required | bool | true | 必填；enum 字段配 default 时隐含可选 |
+| default | any | — | 默认值（枚举自动转成员；list/dict/str 给类型安全默认） |
+| min / max | float | — | 数值区间（str 映射 min_length/max_length） |
+| pattern | str | — | 仅 str：正则校验 |
+| enum | [str] | — | 枚举收窄（值与字符串可直接比较） |
+| description | str | "" | 契约文档与提示词脱敏描述 |
+
+**outputs.<name> 条目**：`kind`（analysis=SkillOutput 带 conclusion_enum，默认 /
+entity=纯结构实体）、`conclusion_enum`（analysis 必填，哨兵自动追加）、`fields`
+（同上表；**输出字段一律可选**——C5：哨兵场景天然无值不逼造）。
+
+**skills 条目**：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| name / description / version | 必填/""/"1.0.0" | 标识 |
+| type | "analysis" | analysis / extraction / generation / audit |
+| output | — | 引用 outputs 键名（generation 可省略，默认 TextOutput） |
+| prompt | "" | 模板；插值命名空间：input / upstream.<step> / clarifications / config['key'] / enriched.<field> |
+| model_tier | 1 | 端点偏好 |
+| tools | [] | 工具白名单（MCP 工具用 <server>_<tool> 名） |
+| config_keys | [] | 声明后模板可读 `{{ config['key'] }}`（版本随快照） |
+| grounding_required | false | evidence 引用须在证据池对齐 |
+| banned_words | [] | generation：滚动校验违禁词 |
+| veto_when / downgrade_to / confidence_after | — | audit 专用：否决表达式（命名空间 output/input）→ 降级结论 + 置信度 |
+
+**preprocessor 条目**：`filters / deduplicators / enrichers`（列表）/ `validators`（列表）/
+`scorer`（单个）。节点 `type` ∈ field_presence / range / keyword_filter / hash_dedup /
+pii_detection / length_truncate / static_scorer / document_extract / retrieval。
+
+**pipeline.steps**（六类 + 自定义 Python 注册）：
+- `skill`：skill / depends_on / parallel_group / condition / loop_condition / max_loops /
+  on_schema_fail(retry|skip|degrade|abort) / max_retries / state_acl
+- `human_review`：trigger_condition / timeout_seconds / **on_timeout(pass|reject|degrade，必填）** /
+  review_fields / required_role
+- `interaction`：skill / trigger_condition / max_rounds / on_exhausted(abort|skip|degrade)
+- `router`：routes[{condition, go_to}] / default_next
+- `sub_pipeline`：pipeline / input_from（不得含暂停型步骤）
+- `generation`：skill / checkpoint_size / holdback_size
+
+**顶层**：domain / version / data_classification(public|internal|sensitive|confidential) /
+input / outputs / preprocessor / skills / falsification_checkers[{checker_id, when}] /
+pipeline / result_from（缺省取最后终端步骤）。
+
+条件与插值表达式语法（共用同一 AST 白名单）：比较 / and or not / in / 算术 /
+len() 等白名单函数；命名空间 steps.<step>.output / vars / routers.<name>.selected /
+input / loop_count。非法表达式**加载期**即拒。
 
 ---
 
@@ -623,6 +700,12 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
   （#/ 待办双列、#/task/{id} 审批、#/run/{id}/clarify 澄清问答），Key 存 localStorage；
 - **CLI**：`vaf serve --api-key ... --notify-card dingtalk=URL ... --review-base ...`；
 - 可选依赖：`pip install "vaf[api]"`（fastapi+uvicorn），核心框架零新增硬依赖。
+- **限流（V2.10）**：内存滑动窗口（每 IP，`--rate-limit N/分钟` 默认 120，0 关闭），
+  超限 429；开放模式公网部署随 serve 启动打印警示；
+- **SSE 事件流（V2.10）**：`GET /api/v1/events/stream`（AUDIT_READ 鉴权），
+  EventBus 实时推送审核/澄清/run 终态事件，慢消费者丢帧不阻塞；
+- **Prometheus（V2.10）**：`GET /metrics`（AUDIT_READ 鉴权），全部指标以 `vaf_*`
+  前缀文本暴露（counter/gauge/直方图分位数汇总）。
 
 ### V2.8 知识与评测增强（对应预置质量差距评审的三项落地）
 - **检索增强（RAG 入门层）**：`preprocessor/retrieval.py`——YAML 规则库 + BM25-lite
@@ -648,40 +731,13 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 
 ---
 
-## 二十四、生产加固与生态扩展（V2.10）
+## 二十四、V2.10 变更摘要（机制详设已并入正章）
 
-**P0 生产加固**
-- 通知异步投递：NotificationHub 后台单线程 + 有界队列（满则丢弃计数保 run 不卡），
-  flush() 支持优雅停机；外部 IM/webhook 网络状况不再阻塞引擎线程；
-- 缓存淘汰：engine._typed LRU（容量 256）、InMemoryStateStore 上限淘汰
-  （等待态优先保留）——serve 长期运行不再内存膨胀；
-- 网关限流：内存滑动窗口（每 IP，`--rate-limit N/分钟`，0 关闭）+ 429；
-  公网部署提示（开放模式警示）。
-
-**P1 架构与生态**
-- VafApp 依赖注入化：config_center / review_queue / permission_checker /
-  falsification_engine / error_memory / prompt_manager / model_router 七大组件
-  全部可注入替换（V2.1 评审"框架装配层不可插拔"项清账）；
-- **MCP 工具接入**（`tools/mcp.py`）：stdio JSON-RPC 2.0 客户端（initialize→
-  tools/list→tools/call，纯标准库），`register_mcp_server(app, name, command)`
-  一行接入现成 MCP 服务器，工具以 `<name>_<tool>` 进入白名单体系；
-- Prometheus `/metrics`（鉴权保护）：vaf_* 前缀 counter/gauge/直方图汇总
-  文本暴露格式。
-
-**P2 功能补齐**
-- `ambient_clinical_notes` 预置：行业唯一大规模跑通的医疗模式（对话→SOAP 草稿），
-  不得推演医生未述内容、objective 缺失显式标记、**强制医生签核**（超时作废）；
-- `vaf falsify sweep`：扫描状态库历史 run → 重跑绑定证伪条件 → 触发处置闭环
-  （失效标记 + 重跑建议 + 审计留痕）——定时回检有了 CLI 入口；
-- SSE `/api/v1/events/stream`：EventBus 实时推送（鉴权保护，慢消费者丢帧）；
-- `LLMJudge`（`eval/llm_judge.py`）：配 VAF_LLM_* 即用的语义评分
-  （reasoning_quality / falsification_quality 0-10），JudgeGovernance 门槛
-  仍然前置（未登记/校准不足即拒绝评分）。
-
-**P3 打磨**
-- CI（GitHub Actions：install→ruff 严重错误级→pytest）；
-- CHANGELOG.md、DESIGN.md 目录（62 条）；
-- 审计日志链式哈希（hash=SHA256(prev_hash+内容)，篡改可检测）；
-- SQLite 加密文档纠偏（明确"本身未加密，敏感场景启用磁盘加密"）；
-- scripts/ 迁移后路径修复并验证。
-
+- P0 生产加固：通知异步投递（§7.13）、缓存淘汰（_typed LRU + InMemory 上限，等待态优先保留）、
+  网关滑动窗口限流（§23）；
+- P1 架构与生态：VafApp 七大组件依赖注入化（config/review_queue/permissions/falsification/
+  error_memory/prompts/model_router）、MCP 工具接入（§15）、Prometheus /metrics（§23）；
+- P2 功能补齐：ambient_clinical_notes 预置（§16）、`vaf falsify sweep` 证伪定时回检 CLI（§4.3
+  处置闭环的入口）、SSE 事件流（§23）、LLMJudge 语义评分（§13，治理门槛前置 fail-closed）；
+- P3 打磨：CI（Actions: install→ruff→pytest）、CHANGELOG、DESIGN 目录、审计日志链式哈希
+  （hash=SHA256(prev_hash+内容)，篡改可检测）、SQLite 加密文档纠偏、scripts 路径修复。
