@@ -69,6 +69,26 @@ def package_dir(name: str, explicit_dir: Optional[str] = None) -> Path:
     return presets_dir(explicit_dir) / name / name
 
 
+
+def _write_sample_input(name: str, target: Path, explicit_dir: Optional[str]) -> None:
+    """随安装附带一份样例输入（取 samples.yaml 第一个样例），vaf run 可直接使用。"""
+    import json
+
+    samples_file = samples_path(name, explicit_dir)
+    if not samples_file.exists():
+        return
+    with open(samples_file, "r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    inputs = data.get("inputs") or []
+    if not inputs:
+        return
+    path = target / f"{name}.sample-input.json"
+    path.write_text(
+        json.dumps(inputs[0]["input"], ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def preset_kind(name: str, explicit_dir: Optional[str] = None) -> str:
     """lowcode（*.domain.yaml）| python（同名包目录）。"""
     if preset_path(name, explicit_dir).exists():
@@ -90,6 +110,7 @@ def install_preset(name: str, target_dir: str = "domains", explicit_dir: Optiona
     """安装预置到目标目录（默认 domains/，即被自动发现）：YAML 复制文件 / Python 复制包目录。"""
     target = Path(target_dir)
     target.mkdir(parents=True, exist_ok=True)
+    _write_sample_input(name, target, explicit_dir)
     if preset_kind(name, explicit_dir) == "lowcode":
         src = preset_path(name, explicit_dir)
         dest = target / src.name

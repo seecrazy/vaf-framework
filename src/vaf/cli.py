@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import json
 import sys
 from typing import List, Optional
@@ -523,10 +524,18 @@ def cmd_preset_install(args: argparse.Namespace) -> int:
     from .presets import install_preset, preset_path
 
     dest = install_preset(args.name, target_dir=args.dir, explicit_dir=args.presets_dir)
+    sample = Path(args.dir or "domains") / f"{args.name}.sample-input.json"
     print(f"已安装: {dest}")
-    print("下一步：")
-    print(f"  1. vaf run --domain {args.name} --input <你的输入.json>   # 配置真实 LLM 后即用")
-    print(f"  2. 按需编辑阈值/提示词（文件头注释标注了知识依据与校准要求）")
+    if sample.exists():
+        print(f"样例输入: {sample}（输入 JSON 长这样，改成你的数据即可）")
+        print("下一步：")
+        print(f"  1. 离线先看效果: vaf preset try {args.name}")
+        print(f"  2. 真实运行（先配 LLM: export VAF_LLM_BASE_URL/API_KEY/MODEL）:")
+        print(f"     vaf run --domain {args.name} --input {sample}")
+        print("  3. 按需编辑阈值/提示词（文件头注释标注了知识依据与校准要求）")
+    else:
+        print("下一步：")
+        print(f"  1. vaf run --domain {args.name} --input <你的输入.json>（字段见 YAML 的 input.fields）")
     from .presets import package_dir, preset_kind
 
     if preset_kind(args.name, args.presets_dir) == "python":

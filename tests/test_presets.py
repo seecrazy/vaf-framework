@@ -261,3 +261,28 @@ def test_install_python_variant_via_discovery(tmp_path):
     )
     registered = register_discovered(app, dirs=[str(tmp_path)], include_entrypoints=False)
     assert "sap_fico_journal_check" in registered
+
+
+# ---------------------------------------------------------------- V2.6.1 样例输入
+def test_install_writes_sample_input_file(tmp_path):
+    """install 附带样例输入：文件存在且能通过领域输入契约校验（可直接 vaf run）。"""
+    install_preset("investment_research_note", target_dir=str(tmp_path))
+    import json as _json
+    from pathlib import Path as _P
+
+    sample = _P(tmp_path) / "investment_research_note.sample-input.json"
+    assert sample.exists()
+    payload = _json.loads(sample.read_text(encoding="utf-8"))
+    app = VafApp()
+    app.register_model_endpoint(
+        "m", ScriptedMockLLM(name="m", responder=lambda *a, **k: "{}"), tier=1
+    )
+    app.load_domain_file(str(_P(tmp_path) / "investment_research_note.domain.yaml"))
+    reg = app.engine.domain_of("investment_research_note")
+    validated = reg.input_contract.model_validate(payload)  # 样例必须合法
+    assert validated.company
+
+
+def test_install_python_variant_no_sample_needed(tmp_path):
+    dest = install_preset("sap_fico_journal_check", target_dir=str(tmp_path))
+    assert (dest / "__init__.py").exists()
