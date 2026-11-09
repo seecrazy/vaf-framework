@@ -341,6 +341,44 @@ def cmd_preset_eval(args: argparse.Namespace) -> int:
     return 0 if report.gate_passed else 1
 
 
+def cmd_falsify_sweep(args: argparse.Namespace) -> int:
+    """证伪定时回检：扫状态库历史 run → 重跑绑定 checker → 触发处置闭环。"""
+    app = build_app(sqlite_path=args.state or ".vaf/state.db")
+    from vaf.contract.base import FalsificationCondition
+    from vaf.runtime.state import RunStatus
+
+    batch = []
+    states = app.state_store.list()
+    for state in states:
+        if state.status in (RunStatus.RUNNING,):
+            continue
+        for step_name, ss in state.step_states.items():
+            output = ss.output if isinstance(ss.output, dict) else None
+            if not output or not output.get("falsification"):
+                continue
+            try:
+                conditions = [FalsificationCondition.model_validate(c) for c in output["falsification"]]
+            except Exception:
+                continue
+            batch.append({
+                "run_id": state.request_id, "step": step_name,
+                "conditions": conditions,
+                "context": {"input": state.input, "vars": state.variables},
+            })
+    print(f"扫描 {len(states)} 个 run，含可执行证伪条件的步骤 {len(batch)} 个")
+    if not batch:
+        return 0
+    events, outcomes = app.run_scheduled_falsification(batch)
+    if not events:
+        print("回检完成：无证伪触发")
+        return 0
+    for event, outcome in zip(events, outcomes):
+        print(f"  ⚠ 触发: run={event.run_id} step={event.step} signal={event.signal}")
+        print(f"    失效 runs: {outcome.invalidated_runs} | 建议重跑: {outcome.recommended_reruns[:3]}")
+    print(f"共 {len(events)} 个结论被标记失效（处置已审计留痕）")
+    return 0
+
+
 def cmd_scaffold(args: argparse.Namespace) -> int:
     import os
 
@@ -545,13 +583,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
         **_llm_kwargs(args),
     )
     keys = ApiKeyStore.from_specs(args.api_key) if args.api_key else None
+    rate_limit = (args.rate_limit, 60) if args.rate_limit else None
     gateway = create_gateway(
-        app, keys=keys, review_base=args.review_base or f"http://{args.host}:{args.port}"
+        app, keys=keys, review_base=args.review_base or f"http://{args.host}:{args.port}",
+        rate_limit=rate_limit,
     )
     mode = "开放模式（仅限内网/演示）" if keys is None else f"鉴权模式（{len(args.api_key)} 把 Key）"
     print(f"VAF 网关启动：http://{args.host}:{args.port}  （{mode}）")
     print(f"  审核台（手机可直接访问）：http://{args.host}:{args.port}/")
     print(f"  API 文档：http://{args.host}:{args.port}/docs")
+    if keys is None:
+        print("  ⚠ 开放模式仅供内网/演示；公网部署请配置 --api-key 与 --rate-limit")
     uvicorn.run(gateway, host=args.host, port=args.port, log_level=args.log_level)
     return 0
 
@@ -695,9 +737,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     serve.add_argument("--notify-secret", default=None, help="钉钉/飞书机器人加签密钥")
     serve.add_argument("--webhook", default=None, help="原始 JSON webhook（与 --notify-card 可同时用）")
     serve.add_argument("--review-base", default=None, help="卡片/审核台对外可达基址（默认 http://host:port）")
+    serve.add_argument("--rate-limit", type=int, default=120,
+                       help="每 IP 每分钟最大请求数（默认 120；0=不限流）")
     serve.add_argument("--log-level", default="info")
     _add_llm_args(serve)
     serve.set_defaults(func=cmd_serve)
+
+    falsify = sub.add_parser("falsify", help="证伪回检")
+    falsify_sub = falsify.add_subparsers(dest="action", required=True)
+    fs = falsify_sub.add_parser("sweep", help="扫描历史 run 并重跑证伪条件")
+    fs.add_argument("--state", default=None)
+    fs.set_defaults(func=cmd_falsify_sweep)
 
     preset = sub.add_parser("preset", help="预置领域库（0 分钟即用）")
     preset_sub = preset.add_subparsers(dest="action", required=True)

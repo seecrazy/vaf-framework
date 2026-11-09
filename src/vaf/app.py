@@ -42,6 +42,15 @@ class VafApp:
         events: Optional[EventBus] = None,
         traces: Optional[TraceCollector] = None,
         notification_hub=None,
+        # V2.10 依赖注入：以下组件均可替换（None=默认实现）——
+        # 换 Redis 审核队列 / Nacos 配置中心 / 定制权限模型不再需要摸内部属性
+        config_center: Optional[ConfigCenter] = None,
+        review_queue: Optional[ReviewQueue] = None,
+        permission_checker: Optional[PermissionChecker] = None,
+        falsification_engine: Optional[FalsificationEngine] = None,
+        error_memory: Optional[ErrorMemory] = None,
+        prompt_manager: Optional["PromptManager"] = None,
+        model_router: Optional[ModelRouter] = None,
         clock: Callable[[], float] = time.time,
     ):
         self.metrics = metrics or MetricsRegistry()
@@ -54,13 +63,13 @@ class VafApp:
         self.state_store = state_store or (
             SqliteStateStore(sqlite_path) if sqlite_path else InMemoryStateStore()
         )
-        self.config = ConfigCenter(env=env, audit=self.audit)
-        self.falsification = FalsificationEngine()
-        self.error_memory = ErrorMemory()
+        self.config = config_center or ConfigCenter(env=env, audit=self.audit)
+        self.falsification = falsification_engine or FalsificationEngine()
+        self.error_memory = error_memory or ErrorMemory()
         self.tool_registry = ToolRegistry()
-        self.permissions = PermissionChecker()
-        self.review_queue = ReviewQueue(clock)
-        self.model_router = ModelRouter(clock=clock)
+        self.permissions = permission_checker or PermissionChecker()
+        self.review_queue = review_queue or ReviewQueue(clock)
+        self.model_router = model_router or ModelRouter(clock=clock)
         self.llm: Optional[LLMClient] = None
         # 通知中心（V2.1 P2-2）：审核/澄清/证伪事件外推
         from .runtime.notification import NotificationHub
@@ -70,7 +79,7 @@ class VafApp:
 
         from .skill.prompt import PromptManager
 
-        self.prompt_manager = PromptManager()
+        self.prompt_manager = prompt_manager or PromptManager()
         self.tool_adapter = ToolAdapter(
             self.tool_registry,
             permission_checker=self.permissions,

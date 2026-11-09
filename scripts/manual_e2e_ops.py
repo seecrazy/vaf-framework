@@ -2,8 +2,10 @@
 import json
 import sys
 
-sys.path.insert(0, "src")
-sys.path.insert(0, "domains")
+import os
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))
+sys.path.insert(0, os.path.join(ROOT, "domains"))
 
 from vaf.app import VafApp
 from vaf.llm.mock import ScriptedMockLLM, tool_call

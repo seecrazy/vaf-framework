@@ -62,3 +62,12 @@ presets:
       抽取文本 → {{ enriched.document_text }} 进提示词。纯文本类与 html 内置
       支持；PDF/DOCX/扫描件走 Python 注入 extractor（document.py 有示例）。
     variants: [lowcode]
+
+  - name: ambient_clinical_notes
+    description: 环境临床记录（医患对话→SOAP 草稿，医生签核后生效）
+    tags: [medical, documentation, hitl]
+    knowledge: |
+      行业唯一大规模跑通的医疗模式（Abridge/DAX 方向）：SOAP 结构化整理、
+      不得推演医生未述内容、PII 已脱敏、objective 缺失必须显式标记；
+      草稿强制医生 human_review 签核，超时作废不自动进病历。
+    variants: [lowcode]

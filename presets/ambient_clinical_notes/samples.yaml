@@ -1,0 +1,35 @@
+inputs:
+- name: 上呼吸道感染门诊（完整 SOAP）
+  expected: succeeded
+  input:
+    raw_id: am-1
+    source: clinic_recorder
+    timestamp: '2026-11-09T09:00:00'
+    visit_reason: 发热咳嗽 3 天首诊
+    patient_age: 34
+    patient_gender: female
+    dialogue: '患者：三天前开始喉咙痛，昨天发烧到 38.6 度，咳嗽有黄痰。
+
+      医生：查体：咽充血，扁桃体 II 度肿大无脓点，双肺呼吸音清。体温 38.2。
+
+      医生：考虑急性上呼吸道感染，细菌性可能大。计划：查血常规，先对症退热，开了对乙酰氨基酚，两天后复诊，如果加重随时来。'
+- name: 对话缺查体（objective 空 + 质量标记）
+  expected: succeeded
+  input:
+    raw_id: am-2
+    source: clinic_recorder
+    timestamp: '2026-11-09T09:30:00'
+    visit_reason: 腰痛复诊
+    patient_age: 52
+    patient_gender: male
+    dialogue: '患者：腰还是酸，坐久了更明显，早上起来僵。
+
+      医生：老问题，继续理疗加核心肌群锻炼，一个月后不好转做 MRI。'
+responses:
+  draft_note:
+  - "{\n    \"subjective\": \"3 天前起咽痛，昨日发热至 38.6°C，咳嗽伴黄痰。\",\n    \"objective\": \"咽充血，扁桃体 II 度肿大无脓点，双肺呼吸音清，体温\
+    \ 38.2°C。\",\n    \"assessment\": \"急性上呼吸道感染，细菌性可能大（医生口述）。\",\n    \"plan\": [\"查血常规\", \"对乙酰氨基酚对症退热\"\
+    , \"两天后复诊，加重随诊\"],\n    \"quality_flags\": []\n  }"
+  - "{\n    \"subjective\": \"腰痛复诊，久坐加重，晨起僵硬。\",\n    \"objective\": \"\",\n    \"assessment\": \"医生口述：老问题（原方案继续）。\"\
+    ,\n    \"plan\": [\"继续理疗\", \"核心肌群锻炼\", \"一个月无好转行 MRI\"],\n    \"quality_flags\": [\"objective 缺失：本次对话无查体/体征内容\"\
+    ]\n  }"

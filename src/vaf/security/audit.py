@@ -11,15 +11,32 @@ from ..observe.metrics import default_metrics
 
 
 class AuditRecord:
-    __slots__ = ("ts", "actor", "action", "target", "detail", "request_id")
+    """链式哈希审计记录：hash = SHA256(prev_hash + 本条内容)——篡改任何历史
+    记录都会导致后续链断裂（append-only + 可验证）。"""
 
-    def __init__(self, actor: str, action: str, target: str, detail: Optional[Dict[str, object]] = None, request_id: str = ""):
+    __slots__ = ("ts", "actor", "action", "target", "detail", "request_id", "prev_hash", "hash")
+
+    def __init__(self, actor: str, action: str, target: str, detail: Optional[Dict[str, object]] = None,
+                 request_id: str = "", prev_hash: str = ""):
         self.ts = round(time.time(), 6)
         self.actor = actor
         self.action = action
         self.target = target
         self.detail = dict(detail or {})
         self.request_id = request_id
+        self.prev_hash = prev_hash
+        self.hash = self._compute_hash()
+
+    def _compute_hash(self) -> str:
+        import hashlib
+        import json as _json
+
+        payload = _json.dumps(
+            [self.prev_hash, self.ts, self.actor, self.action, self.target,
+             self.detail, self.request_id],
+            sort_keys=True, ensure_ascii=False, default=str,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -29,6 +46,8 @@ class AuditRecord:
             "target": self.target,
             "detail": self.detail,
             "request_id": self.request_id,
+            "prev_hash": self.prev_hash,
+            "hash": self.hash,
         }
 
 
@@ -75,6 +94,7 @@ class AuditLog:
     def __init__(self, sinks: Optional[List[AuditSink]] = None):
         self._sinks: List[AuditSink] = list(sinks or [])
         self._counter = default_metrics().counter("audit_records_total", "审计记录总数")
+        self._last_hash = ""  # 链头
 
     def add_sink(self, sink: AuditSink) -> None:
         self._sinks.append(sink)
@@ -87,7 +107,8 @@ class AuditLog:
         detail: Optional[Dict[str, object]] = None,
         request_id: str = "",
     ) -> AuditRecord:
-        rec = AuditRecord(actor, action, target, detail, request_id)
+        rec = AuditRecord(actor, action, target, detail, request_id, prev_hash=self._last_hash)
+        self._last_hash = rec.hash
         self._counter.inc(action=action)
         for sink in self._sinks:
             sink.write(rec)

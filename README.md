@@ -236,11 +236,14 @@ vaf inspect <run_id> [--json]                # run 排障一屏看清（步骤/�
 vaf review list / approve <task_id> / reject <task_id> --reviewer <user>
 vaf clarify submit <run_id> answers.json
 vaf eval --domain <d> --dataset golden.yaml --gates conclusion_accuracy
-vaf serve [--api-key ...] [--notify-card ...]
+vaf serve [--api-key ...] [--notify-card ...] [--rate-limit N]
 ```
 
 `vaf run/inspect/serve` 自动发现 `domains/` 目录（Python 包与 `*.domain.yaml`）；
 第三方领域包 pip 安装后在 `pyproject.toml` 声明 entry_points 组 `vaf.domains` 即被发现。
+
+**工具生态**：`register_mcp_server(app, name=..., command=[...])` 一行接入任意 MCP 服务器，
+工具自动进入技能白名单体系（stdio JSON-RPC，零依赖）。
 
 **部署形态**：单进程（默认 SQLite 状态库）→ 多实例（`RedisStateStore.from_url`）→
 移动/多端（`vaf serve` 网关 + 消息卡片）。断点续跑与幂等由状态库保证，重启不丢现场。

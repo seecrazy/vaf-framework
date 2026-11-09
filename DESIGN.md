@@ -1,8 +1,73 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.9 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.10 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
 ---
+
+## 目录
+
+- [一、V1.1 → V2.0 修订说明（问题响应矩阵）](#一-v1-1-v2-0-修订说明-问题响应矩阵)
+- [二、设计目标与原则](#二-设计目标与原则)
+- [三、总体架构](#三-总体架构)
+- [四、L1 契约层](#四-l1-契约层)
+  - [4.1 基础枚举与结构体（`contract/base.py`）](#4-1-基础枚举与结构体-contract-base-py)
+  - [4.2 SkillOutput（类型化证据链）](#4-2-skilloutput-类型化证据链)
+  - [4.4 可执行证伪（`contract/falsification.py`）](#4-4-可执行证伪-contract-falsification-py)
+  - [4.5 输出快速构造器（V2.1 P1-1，`contract/builders.py`）](#4-5-输出快速构造器-v2-1-p1-1-contract-builders-py)
+- [五、L2 预处理层](#五-l2-预处理层)
+  - [5.1 数据模型（C9）](#5-1-数据模型-c9)
+  - [5.2 原子节点](#5-2-原子节点)
+  - [5.3 失败处理（C8）](#5-3-失败处理-c8)
+  - [5.4 内置组件库（`preprocessor/builtin.py`）](#5-4-内置组件库-preprocessor-builtin-py)
+  - [5.5 执行顺序](#5-5-执行顺序)
+- [六、L3 技能层](#六-l3-技能层)
+  - [6.1 技能分类（C2/C6/C7）](#6-1-技能分类-c2-c6-c7)
+  - [6.2 执行器（`skill/executor.py`）](#6-2-执行器-skill-executor-py)
+  - [6.3 SkillContext（C9）](#6-3-skillcontext-c9)
+  - [6.4 提示词管理（`skill/prompt.py`）](#6-4-提示词管理-skill-prompt-py)
+  - [6.5 错误记忆（B8，`skill/memory.py`）](#6-5-错误记忆-b8-skill-memory-py)
+  - [6.6 Grounding 校验（B10/C10，`skill/grounding.py`）](#6-6-grounding-校验-b10-c10-skill-grounding-py)
+- [七、L4 运行时](#七-l4-运行时)
+  - [7.1 Pipeline 模型（`runtime/steps.py`，discriminated union）](#7-1-pipeline-模型-runtime-steps-py-discriminated-union)
+  - [7.2 表达式引擎（B5，`runtime/expression.py`）](#7-2-表达式引擎-b5-runtime-expression-py)
+  - [7.3 状态模型（`runtime/state.py`）](#7-3-状态模型-runtime-state-py)
+  - [7.4 持久化（`runtime/persistence.py`）](#7-4-持久化-runtime-persistence-py)
+  - [7.5 幂等（A3 前置）](#7-5-幂等-a3-前置)
+  - [7.6 InteractionStep（A1）](#7-6-interactionstep-a1)
+  - [7.7 RouterStep（A2）](#7-7-routerstep-a2)
+  - [7.8 SubPipelineStep（A2）](#7-8-subpipelinestep-a2)
+  - [7.9 人工审核（B6，`runtime/review.py`）](#7-9-人工审核-b6-runtime-review-py)
+  - [7.10 执行计划快照（A3，`runtime/snapshot.py`）](#7-10-执行计划快照-a3-runtime-snapshot-py)
+  - [7.11 编排引擎（`runtime/engine.py`）](#7-11-编排引擎-runtime-engine-py)
+  - [7.12 步骤处理器注册表（V2.1 P0-1，`runtime/handlers.py`）](#7-12-步骤处理器注册表-v2-1-p0-1-runtime-handlers-py)
+  - [7.13 通知中心（V2.1 P2-2，`runtime/notification.py`）](#7-13-通知中心-v2-1-p2-2-runtime-notification-py)
+- [八、LLM 抽象与模型路由](#八-llm-抽象与模型路由)
+  - [8.1 能力协商（`llm/client.py`）](#8-1-能力协商-llm-client-py)
+  - [8.2 自修复重试（B1）](#8-2-自修复重试-b1)
+  - [8.3 模型路由器（B3，`llm/router.py`）](#8-3-模型路由器-b3-llm-router-py)
+  - [8.4 测试替身（`llm/mock.py`）](#8-4-测试替身-llm-mock-py)
+- [九、流式生成与滚动校验（A4）](#九-流式生成与滚动校验-a4)
+- [十、安全体系](#十-安全体系)
+  - [10.1 RBAC（`security/permissions.py`）](#10-1-rbac-security-permissions-py)
+  - [10.2 分级脱敏（`security/redaction.py`）](#10-2-分级脱敏-security-redaction-py)
+  - [10.3 审计（`security/audit.py`）](#10-3-审计-security-audit-py)
+- [十一、错误记忆（B8）](#十一-错误记忆-b8)
+- [十二、可观测性（B7）](#十二-可观测性-b7)
+- [十三、评估闭环](#十三-评估闭环)
+- [十四、配置中心（`config/center.py`）](#十四-配置中心-config-center-py)
+- [十五、工具适配层（`tools/`）](#十五-工具适配层-tools)
+- [十六、示例领域设计](#十六-示例领域设计)
+  - [16.1 medical_triage（演示：交互 + 审核 + 证伪 + HITL）](#16-1-medical_triage-演示-交互-审核-证伪-hitl)
+  - [16.2 ops_incident（演示：Router 动态 RCA + 工具 + 子流程）](#16-2-ops_incident-演示-router-动态-rca-工具-子流程)
+- [十七、门面与 CLI](#十七-门面与-cli)
+- [十八、测试策略](#十八-测试策略)
+- [十九、能力边界声明（继承 V1.1 并修订）](#十九-能力边界声明-继承-v1-1-并修订)
+- [二十、路线图（修订版，B9 / V2.1 更新）](#二十-路线图-修订版-b9-v2-1-更新)
+- [二十一、零代码领域接入（V2.2，`vaf/lowcode.py`）](#二十一-零代码领域接入-v2-2-vaf-lowcode-py)
+- [二十二、预置领域库（V2.3，`vaf/presets.py` + `presets/`）](#二十二-预置领域库-v2-3-vaf-presets-py-presets)
+- [二十三、移动接入层（V2.5，`vaf/api/`）](#二十三-移动接入层-v2-5-vaf-api)
+  - [V2.8 知识与评测增强（对应预置质量差距评审的三项落地）](#v2-8-知识与评测增强-对应预置质量差距评审的三项落地)
+  - [V2.9 知识/评测收尾（评审剩余三项清零）](#v2-9-知识-评测收尾-评审剩余三项清零)
 
 ## 一、V1.1 → V2.0 修订说明（问题响应矩阵）
 
@@ -580,4 +645,43 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 - **黄金集 48 例**：credit 19（samples 4 + golden 15，含 DTI 0.50 恰界/征信 600
   恰界/股市用途/自雇/期限极值）、contract 10、investment 10、其余领域 samples
   全部标注 expected；全部用例经输入契约校验（参数化测试锁定）。
+
+---
+
+## 二十四、生产加固与生态扩展（V2.10）
+
+**P0 生产加固**
+- 通知异步投递：NotificationHub 后台单线程 + 有界队列（满则丢弃计数保 run 不卡），
+  flush() 支持优雅停机；外部 IM/webhook 网络状况不再阻塞引擎线程；
+- 缓存淘汰：engine._typed LRU（容量 256）、InMemoryStateStore 上限淘汰
+  （等待态优先保留）——serve 长期运行不再内存膨胀；
+- 网关限流：内存滑动窗口（每 IP，`--rate-limit N/分钟`，0 关闭）+ 429；
+  公网部署提示（开放模式警示）。
+
+**P1 架构与生态**
+- VafApp 依赖注入化：config_center / review_queue / permission_checker /
+  falsification_engine / error_memory / prompt_manager / model_router 七大组件
+  全部可注入替换（V2.1 评审"框架装配层不可插拔"项清账）；
+- **MCP 工具接入**（`tools/mcp.py`）：stdio JSON-RPC 2.0 客户端（initialize→
+  tools/list→tools/call，纯标准库），`register_mcp_server(app, name, command)`
+  一行接入现成 MCP 服务器，工具以 `<name>_<tool>` 进入白名单体系；
+- Prometheus `/metrics`（鉴权保护）：vaf_* 前缀 counter/gauge/直方图汇总
+  文本暴露格式。
+
+**P2 功能补齐**
+- `ambient_clinical_notes` 预置：行业唯一大规模跑通的医疗模式（对话→SOAP 草稿），
+  不得推演医生未述内容、objective 缺失显式标记、**强制医生签核**（超时作废）；
+- `vaf falsify sweep`：扫描状态库历史 run → 重跑绑定证伪条件 → 触发处置闭环
+  （失效标记 + 重跑建议 + 审计留痕）——定时回检有了 CLI 入口；
+- SSE `/api/v1/events/stream`：EventBus 实时推送（鉴权保护，慢消费者丢帧）；
+- `LLMJudge`（`eval/llm_judge.py`）：配 VAF_LLM_* 即用的语义评分
+  （reasoning_quality / falsification_quality 0-10），JudgeGovernance 门槛
+  仍然前置（未登记/校准不足即拒绝评分）。
+
+**P3 打磨**
+- CI（GitHub Actions：install→ruff 严重错误级→pytest）；
+- CHANGELOG.md、DESIGN.md 目录（62 条）；
+- 审计日志链式哈希（hash=SHA256(prev_hash+内容)，篡改可检测）；
+- SQLite 加密文档纠偏（明确"本身未加密，敏感场景启用磁盘加密"）；
+- scripts/ 迁移后路径修复并验证。
 

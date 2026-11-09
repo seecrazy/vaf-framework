@@ -146,9 +146,11 @@ class PipelineEngine:
         self._run_total = self.metrics.counter("runs_total", "run 总数")
         self._run_result = self.metrics.counter("run_result", "run 终态分布")
         self._step_duration = self.metrics.histogram("step_duration_s", "步骤耗时（按类型分桶）")
-        # 运行期类型化输出缓存 request_id → {step → BaseModel|dict}
+        # 运行期类型化输出缓存 request_id → {step → BaseModel|dict}（LRU，防长期运行膨胀）
         self._typed: Dict[str, Dict[str, Any]] = {}
         self._typed_lock = threading.Lock()
+        self._typed_capacity = 256
+        self._typed_order: List[str] = []  # 访问序（尾部最新）
         # 副作用补偿登记 pending 队列（工具线程写入，随 _persist 合并进状态）
         self._pending_side_effects: Dict[str, List] = {}
         self._side_effects_lock = threading.Lock()
@@ -180,6 +182,12 @@ class PipelineEngine:
             f"no StepHandler registered for step type {type(step).__name__}; "
             f"register one via engine.register_step_handler()"
         )
+
+    def _evict_typed_locked(self) -> None:
+        """持锁调用：超出容量时淘汰最旧条目（等待中的 run 优先保留）。"""
+        while len(self._typed_order) > self._typed_capacity:
+            oldest = self._typed_order.pop(0)
+            self._typed.pop(oldest, None)
 
     def _record_side_effect(self, undo_key: str, request_id: str, tool: str, description: str) -> None:
         from .state import SideEffectRecord
@@ -301,6 +309,8 @@ class PipelineEngine:
             state.step_states[step.name] = StepState(step=step.name)
         with self._typed_lock:
             self._typed[request_id] = {}
+            self._typed_order.append(request_id)
+            self._evict_typed_locked()
 
         run_span = self._span("run", pipeline=pipeline_name, request_id=request_id)
         self._run_total.inc(pipeline=pipeline_name)
@@ -589,6 +599,8 @@ class PipelineEngine:
         run_span.finish("ok")
         with self._typed_lock:
             self._typed.pop(state.request_id, None)
+            if state.request_id in self._typed_order:
+                self._typed_order.remove(state.request_id)
         return RunHandle.from_state(state)
 
     def _fail_run(
@@ -624,6 +636,8 @@ class PipelineEngine:
         run_span.finish("error", error=message[:200])
         with self._typed_lock:
             self._typed.pop(state.request_id, None)
+            if state.request_id in self._typed_order:
+                self._typed_order.remove(state.request_id)
         return RunHandle.from_state(state)
 
     # ==================================================================
@@ -678,6 +692,8 @@ class PipelineEngine:
                 typed[step.name] = ss.output
         with self._typed_lock:
             self._typed[state.request_id] = typed
+            self._typed_order.append(state.request_id)
+            self._evict_typed_locked()
         return typed
 
     def _build_ctx(

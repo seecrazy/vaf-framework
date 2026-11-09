@@ -1,0 +1,78 @@
+# =============================================================================
+# 预置领域：ambient_clinical_notes 环境临床记录（零代码，V2.10）
+# -----------------------------------------------------------------------------
+# 行业验证：环境记录（医患对话 → 结构化临床笔记）是医疗 Agent 唯一大规模
+# 跑通的模式（Abridge / Nuance DAX / Suki 方向）；自主临床决策不在本领域目标内。
+# 知识依据：SOAP 笔记格式（Subjective/Objective/Assessment/Plan）为门诊病历
+# 通用结构；输出仅限草稿，**必须经医生审核确认**后才能进入病历系统；
+# 患者身份信息按敏感级脱敏（框架自动）。
+# =============================================================================
+domain: ambient_clinical_notes
+version: "1.0.0"
+data_classification: sensitive
+
+input:
+  fields:
+    - {name: visit_reason, type: str, required: true, description: 就诊主诉背景}
+    - {name: dialogue, type: str, required: true, max: 30000, description: 医患对话转写文本}
+    - {name: patient_age, type: int, min: 0, max: 150, required: false}
+    - {name: patient_gender, type: str, required: false}
+
+outputs:
+  note:
+    kind: entity
+    fields:
+      - {name: subjective, type: str, description: 主诉与现病史（患者视角）}
+      - {name: objective, type: str, description: 客观所见（医生查体/体征，仅取对话中出现的内容）}
+      - {name: assessment, type: str, description: 评估（医生口述的判断，逐字保留不得推演）}
+      - {name: plan, type: list, description: 计划（检查/用药/随访，逐条）}
+      - {name: quality_flags, type: list, description: 记录质量问题（如客观段信息缺失）}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [visit_reason, dialogue]}
+    - {type: pii_detection, fields: [dialogue, visit_reason]}
+  enrichers:
+    - {type: retrieval, path: knowledge.yaml, top_k: 3, output_field: knowledge,
+       query_fields: [visit_reason, dialogue]}
+
+skills:
+  - name: draft_note
+    type: extraction
+    output: note
+    prompt: |
+      就诊背景：{{ input.visit_reason }}；患者：{{ input.patient_age }} 岁 / {{ input.patient_gender }}。
+      【SOAP 记录规范（检索命中）】{{ enriched.knowledge }}
+
+      医患对话转写：
+      {{ input.dialogue }}
+
+      整理规则：
+      1. Subjective 只含患者口述症状/病程（主诉视角，不混入医生判断）；
+      2. Objective 只含对话中出现的查体/体征/检查结果——缺失则留空并把
+         "objective 缺失"写入 quality_flags，不得编造；
+      3. Assessment/Plan 逐字保留医生口述，不得推演或补全；
+      4. 对话含敏感信息（电话/证件号）已由框架脱敏，原样保留掩码；
+      5. 对话信息不足以成稿（过短/无实质内容）→ quality_flags 写明缺项。
+
+pipeline:
+  name: ambient_clinical_notes
+  domain: ambient_clinical_notes
+  version: "1.0.0"
+  steps:
+    - name: draft
+      type: skill
+      skill: draft_note
+      on_schema_fail: retry
+      max_retries: 2
+    # 医疗铁律：草稿必须医生确认（医生可在 H5 审核台改后批准）
+    - name: physician_signoff
+      type: human_review
+      depends_on: [draft]
+      trigger_condition: "1 == 1"
+      timeout_seconds: 43200
+      on_timeout: reject            # 超时未签 = 草稿作废，绝不自动进病历
+      review_fields: [subjective, assessment, plan]
+      required_role: reviewer
+
+result_from: draft

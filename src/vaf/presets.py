@@ -290,4 +290,20 @@ def preset_eval(
         request_prefix=f"preset-eval:{name}",
         gates=[Gate(metric="conclusion_accuracy", threshold=1.0)],
     )
+    # HITL 类预置：expected 以 waiting_ 开头的用例核对终态而非结论
+    for case in report.cases:
+        sample_expected = next(
+            (c.expected_conclusion for c in dataset_cases if c.case_id == case.case_id), None
+        )
+        if sample_expected and sample_expected in ("succeeded", "failed", "waiting_review", "waiting_input"):
+            case.correct = case.status == sample_expected  # 终态语义：核对 status 而非 conclusion
+    if any(c.correct is not None for c in report.cases):
+        scored = [c for c in report.cases if c.correct is not None]
+        report.metrics["conclusion_accuracy"] = round(
+            sum(1 for c in scored if c.correct) / len(scored), 4
+        )
+        report.gate_passed = all(
+            gate.passed(report.metrics.get(gate.metric, 0.0))
+            for gate in [Gate(metric="conclusion_accuracy", threshold=1.0)]
+        )
     return report, ("live" if live else "offline")

@@ -1,6 +1,7 @@
 """移动接入层测试（V2.5）：网关鉴权/RBAC/端点、全移动闭环流（提交→澄清→卡片→审批）、
 钉钉/企微/飞书卡片格式、H5 审核台页面。"""
 import json
+import time
 
 import pytest
 
@@ -252,3 +253,69 @@ def test_card_sink_unknown_platform():
 
     with _pytest.raises(ValueError, match="不支持的平台"):
         card_sink("slack", "http://x", review_base="http://gw")
+
+
+# ---------------------------------------------------------------- P0 批次
+def test_notification_delivery_is_async_and_fast():
+    """引擎入队不阻塞：慢 sink（sleep）不影响 notify 返回时间。"""
+    import time as _time
+
+    from vaf.runtime.notification import NotificationHub
+
+    def slow_sink(event_type, payload):
+        _time.sleep(0.3)
+
+    hub = NotificationHub(sinks=[slow_sink], async_delivery=True)
+    start = _time.perf_counter()
+    hub.notify("review_requested", {"x": 1})
+    elapsed = _time.perf_counter() - start
+    assert elapsed < 0.05, "notify 应立即返回（异步投递）"
+    assert hub.flush(timeout_s=5.0)
+    assert hub._sent.value() == 1
+
+
+def test_typed_cache_eviction():
+    """超容量的最旧 run 类型化缓存被淘汰（防长期运行膨胀）。"""
+    from vaf.runtime.engine import PipelineEngine
+
+    engine = make_app().engine
+    engine._typed_capacity = 3
+    with engine._typed_lock:
+        for i in range(6):
+            engine._typed[f"r{i}"] = {}
+            engine._typed_order.append(f"r{i}")
+        engine._evict_typed_locked()
+    assert len(engine._typed) == 3
+    assert set(engine._typed) == {"r3", "r4", "r5"}
+
+
+def test_in_memory_store_eviction_keeps_waiting():
+    """超限时优先淘汰非等待态；等待中的 run 保留。"""
+    import time as _time
+
+    from vaf.runtime.persistence import InMemoryStateStore
+    from vaf.runtime.state import PipelineState, RunStatus
+
+    store = InMemoryStateStore(max_states=3)
+    for i in range(5):
+        state = PipelineState(request_id=f"done-{i}", pipeline="p", domain="d")
+        state.status = RunStatus.SUCCEEDED
+        state.updated_at = _time.time() + i
+        store.save(state)
+    waiting = PipelineState(request_id="waiting-1", pipeline="p", domain="d")
+    waiting.status = RunStatus.WAITING_REVIEW
+    waiting.updated_at = 1.0  # 最旧
+    store.save(waiting)
+    assert store.get("waiting-1") is not None  # 等待态不淘汰
+    assert store.get("done-0") is None  # 最旧完成态被淘汰
+
+
+def test_gateway_rate_limit():
+    from vaf.api.gateway import create_gateway
+
+    _, app = _client(keys=None)
+    gateway = create_gateway(app, keys=None, rate_limit=(3, 60))
+    client = fastapi_testclient.TestClient(gateway)
+    statuses = [client.get("/health").status_code for _ in range(5)]
+    assert statuses[:3] == [200, 200, 200]
+    assert statuses[3] == 429 and statuses[4] == 429

@@ -26,13 +26,29 @@ class StateStore:
 
 
 class InMemoryStateStore(StateStore):
-    def __init__(self) -> None:
+    """内存状态库（测试/演示）。max_states 防长期运行无限增长：
+    超限时优先淘汰最早的非等待态 run。"""
+
+    def __init__(self, max_states: int = 10000) -> None:
         self._states: dict = {}
         self._lock = threading.Lock()
+        self._max = max_states
 
     def save(self, state: PipelineState) -> None:
         with self._lock:
             self._states[state.request_id] = state.model_copy(deep=True)
+            if len(self._states) > self._max:
+                self._evict_locked()
+
+    def _evict_locked(self) -> None:
+        from .state import RunStatus
+
+        waiting = (RunStatus.WAITING_REVIEW, RunStatus.WAITING_INPUT, RunStatus.RUNNING)
+        for rid in sorted(self._states, key=lambda r: self._states[r].updated_at):
+            if len(self._states) <= self._max:
+                return
+            if self._states[rid].status not in waiting:
+                del self._states[rid]
 
     def get(self, request_id: str) -> Optional[PipelineState]:
         with self._lock:

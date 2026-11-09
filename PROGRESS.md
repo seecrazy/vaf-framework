@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.9.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **277 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.10.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **292 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -138,6 +138,17 @@
   全标注）；参数化测试：全部预置离线评估过门禁 + 全部用例过输入契约；
 - 测试 253 → **277**（假 embedding 服务语义排序/缓存/auto 升级与 keyword 强制/
   两个新规则库命中注入/全预置参数化校验/黄金总量阈值）。
+
+
+### 2026-11-09（第十一批）· V2.10.0 —— 生产加固 + 生态扩展（评审 13 项清零）
+- P0：通知异步（队列+溢出计数）、typed LRU + InMemory 淘汰、网关滑动窗口限流；
+- P1：七大组件 DI、MCP stdio 客户端（假服务器集成测试：工具注册/调用/错误传播/
+  技能管线端到端）、Prometheus /metrics；
+- P2：ambient_clinical_notes（SOAP+医生签核）、vaf falsify sweep（处置闭环入口）、
+  SSE 事件流、LLMJudge（治理门槛前置）；
+- P3：CI/CHANGELOG/DESIGN TOC、审计链式哈希（篡改检测测试）、SQLite 加密文档纠偏、
+  scripts 修复；
+- 测试 277 → **292**。
 
 ## 测试基线
 

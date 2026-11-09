@@ -422,7 +422,7 @@ def test_inspect_run_report():
 # ==========================================================================
 def test_notification_hub_dispatches_review_events():
     received = []
-    hub = NotificationHub(sinks=[lambda t, p: received.append((t, p))])
+    hub = NotificationHub(sinks=[lambda t, p: received.append((t, p))], async_delivery=False)
     app = VafApp(notification_hub=hub)
     app.register_model_endpoint("m", ScriptedMockLLM(responder=DemoResponder()), tier=1)
     import medical_triage
@@ -457,7 +457,7 @@ def test_webhook_sink_posts_with_signature():
     thread.start()
     try:
         sink = webhook_sink(f"http://127.0.0.1:{server.server_port}/hook", secret="s3cret")
-        hub = NotificationHub(sinks=[sink])
+        hub = NotificationHub(sinks=[sink], async_delivery=False)
         hub.notify("review_requested", {"task_id": "t1"})
         assert captured["body"]["event"] == "review_requested"
         assert captured["body"]["payload"]["task_id"] == "t1"

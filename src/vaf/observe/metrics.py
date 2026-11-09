@@ -193,3 +193,32 @@ class Timer:
 
 Clock = Callable[[], float]
 default_clock: Clock = time.time
+
+
+def to_prometheus(registry: "MetricsRegistry") -> str:
+    """注册表 → Prometheus 文本暴露格式（计数器/仪表/直方图汇总）。"""
+    lines: List[str] = []
+    snapshot = registry.snapshot()
+
+    def _emit(name: str, labels: Dict[str, str], value: float, kind: str) -> None:
+        label_str = ""
+        if labels:
+            joined = ",".join(f'{k}="{str(v).replace(chr(34), chr(39))}"' for k, v in sorted(labels.items()))
+            label_str = "{" + joined + "}"
+        metric = f"vaf_{name.replace('-', '_')}"
+        lines.append(f"# TYPE {metric} {kind}")
+        lines.append(f"{metric}{label_str} {value}")
+
+    for _name, entries in snapshot["counters"].items():
+        for entry in entries:
+            _emit(_name, entry["labels"], entry["value"], "counter")
+    for _name, entries in snapshot["gauges"].items():
+        for entry in entries:
+            _emit(_name, entry["labels"], entry["value"], "gauge")
+    for name, entries in snapshot["histograms"].items():
+        for entry in entries:
+            labels = dict(entry["labels"])
+            for stat in ("count", "mean", "p50", "p95", "p99"):
+                labels["_stat"] = stat
+                _emit(name, labels, entry[stat], "gauge")
+    return "\n".join(lines) + "\n"

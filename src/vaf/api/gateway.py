@@ -19,8 +19,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import threading
+from typing import List
+
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..errors import PermissionDeniedError, VafError
@@ -45,11 +48,36 @@ class ReviewDecisionRequest(BaseModel):
     comment: str = ""
 
 
+class SlidingWindowLimiter:
+    """内存滑动窗口限流（按客户端 IP）。多进程部署时换 Redis 实现——接口保持不变。"""
+
+    def __init__(self, max_requests: int = 120, window_s: float = 60.0):
+        self.max = max_requests
+        self.window = window_s
+        self._hits: Dict[str, List[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, client: str, now: Optional[float] = None) -> bool:
+        import time as _time
+
+        now = now if now is not None else _time.time()
+        with self._lock:
+            bucket = self._hits.setdefault(client, [])
+            cutoff = now - self.window
+            while bucket and bucket[0] < cutoff:
+                bucket.pop(0)
+            if len(bucket) >= self.max:
+                return False
+            bucket.append(now)
+            return True
+
+
 def create_gateway(
     app,
     *,
     keys: Optional[ApiKeyStore] = None,
     review_base: str = "http://localhost:8000",
+    rate_limit: Optional[tuple] = None,  # (max_requests, window_s)；None=不限
 ) -> "FastAPI":
     api = FastAPI(
         title="VAF Gateway",
@@ -57,6 +85,18 @@ def create_gateway(
         description="垂直领域 Agent 框架 HTTP 网关：run 提交 / 澄清 / 人工审核 / 预置领域",
     )
     open_mode = keys is None or not keys.enabled
+    limiter = SlidingWindowLimiter(*rate_limit) if rate_limit else None
+    if limiter is not None:
+        metrics_limited = __import__("vaf.observe.metrics", fromlist=["default_metrics"]).default_metrics().counter(
+            "gateway_rate_limited_total", "网关限流拦截次数")
+
+        @api.middleware("http")
+        async def _rate_limit_middleware(request: Request, call_next):
+            client = request.client.host if request.client else "unknown"
+            if not limiter.allow(client):
+                metrics_limited.inc(client=client)
+                return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+            return await call_next(request)
 
     @api.exception_handler(PermissionDeniedError)
     def _forbidden(request: Request, exc: PermissionDeniedError):
@@ -90,6 +130,50 @@ def create_gateway(
             "auth_mode": "open(仅限内网/演示)" if open_mode else "api-key",
             "domains": sorted(app.engine._domains.keys()),
         }
+
+    @api.get("/metrics")
+    def prometheus_metrics(user: User = Depends(resolve_user)):
+        app.permissions.require(user, Permission.AUDIT_READ, context="api:metrics")
+        from ..observe.metrics import to_prometheus
+
+        return PlainTextResponse(to_prometheus(app.metrics))
+
+    @api.get("/api/v1/events/stream")
+    async def event_stream(user: User = Depends(resolve_user)):
+        """SSE 事件流：审核/澄清/run 终态实时推送（H5 审核台自动刷新）。"""
+        import asyncio
+        import json as _json
+        import queue as _queue
+
+        app.permissions.require(user, Permission.AUDIT_READ, context="api:sse")
+        q: "_queue.Queue" = _queue.Queue(maxsize=100)
+
+        def _on_event(event: Dict[str, object]) -> None:
+            try:
+                q.put_nowait(event)
+            except Exception:  # noqa: BLE001 - 慢消费者丢事件
+                pass
+
+        app.events.add_sink(_on_event)
+
+        async def generator():
+            try:
+                while True:
+                    try:
+                        event = q.get_nowait()
+                        yield f"data: {_json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+                    except _queue.Empty:
+                        await asyncio.sleep(0.5)
+            finally:
+                # 连接断开时移除 sink（EventBus.sinks 列表即订阅面）
+                try:
+                    app.events._sinks.remove(_on_event)
+                except ValueError:
+                    pass
+
+        from fastapi.responses import StreamingResponse
+
+        return StreamingResponse(generator(), media_type="text/event-stream")
 
     @api.get("/api/v1/presets")
     def presets():

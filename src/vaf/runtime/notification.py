@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import threading
+import time
 import urllib.request
 from typing import Callable, Dict, List, Optional
 
@@ -100,15 +101,32 @@ def webhook_sink(
 
 
 class NotificationHub:
-    """事件 → sinks 分发；可挂到 EventBus（attach）自动订阅关键事件。"""
+    """事件 → sinks 分发；可挂到 EventBus（attach）自动订阅关键事件。
 
-    def __init__(self, sinks: Optional[List[Sink]] = None, event_types=None):
+    V2.10：默认异步投递（后台单线程 + 有界队列）——外部 webhook/IM 服务的
+    网络状况不再阻塞引擎线程；队列满时丢弃并计数（保 run 不卡）。
+    同步语义仍可用（async_delivery=False，测试/调试）。
+    """
+
+    def __init__(self, sinks: Optional[List[Sink]] = None, event_types=None,
+                 async_delivery: bool = True, queue_size: int = 1000):
         self._sinks: List[Sink] = list(sinks or [])
         self.event_types = set(event_types or NOTIFY_EVENT_TYPES)
         self._lock = threading.Lock()
         self._metrics = default_metrics()
         self._sent = self._metrics.counter("notifications_sent_total", "通知发送次数")
         self._dropped = self._metrics.counter("notifications_failed_total", "通知失败次数")
+        self._overflow = self._metrics.counter("notification_queue_dropped_total", "通知队列溢出丢弃")
+        self._async = async_delivery
+        import queue as _q
+        self._queue: "_q.Queue" = _q.Queue(maxsize=queue_size)
+        self._busy = threading.Event()  # worker 正在投递
+        self._worker: Optional[threading.Thread] = None
+        if async_delivery:
+            self._worker = threading.Thread(
+                target=self._drain_loop, name="vaf-notifier", daemon=True
+            )
+            self._worker.start()
 
     def add_sink(self, sink: Sink) -> None:
         with self._lock:
@@ -117,6 +135,40 @@ class NotificationHub:
     def notify(self, event_type: str, payload: Dict[str, object]) -> None:
         if event_type not in self.event_types:
             return
+        if self._async:
+            try:
+                self._queue.put_nowait((event_type, payload))
+            except Exception:  # noqa: BLE001 - 队列满：保 run 不卡
+                self._overflow.inc()
+            return
+        self._dispatch(event_type, payload)
+
+    def flush(self, timeout_s: float = 5.0) -> bool:
+        """等待队列清空（优雅停机/测试用）。"""
+        if not self._async:
+            return True
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if self._queue.empty() and not self._busy.is_set():
+                return True
+            time.sleep(0.01)
+        return False
+
+    def _drain_loop(self) -> None:
+        import queue as _q
+
+        while True:
+            try:
+                event_type, payload = self._queue.get(timeout=1.0)
+            except _q.Empty:
+                continue
+            self._busy.set()
+            try:
+                self._dispatch(event_type, payload)
+            finally:
+                self._busy.clear()
+
+    def _dispatch(self, event_type: str, payload: Dict[str, object]) -> None:
         with self._lock:
             sinks = list(self._sinks)
         for sink in sinks:
