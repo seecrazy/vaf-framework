@@ -113,7 +113,10 @@ def _field_from_spec(spec: "FieldSpec") -> tuple:
     if spec.required and spec.default is None:
         field_kwargs["default"] = ...  # 必填且无默认
     elif spec.default is not None:
-        field_kwargs["default"] = spec.default  # 显式 default 隐含可选
+        default = spec.default
+        if isinstance(annotation, type) and issubclass(annotation, Enum):
+            default = annotation(default)  # 枚举默认值转成员（序列化一致性）
+        field_kwargs["default"] = default  # 显式 default 隐含可选
     elif annotation is list:
         field_kwargs["default_factory"] = list
     elif annotation is dict:

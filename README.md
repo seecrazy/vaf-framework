@@ -171,58 +171,35 @@ output = quick_output(
 )
 ```
 
-## 生产化：接入真实 LLM
+## 生产化：接入真实 LLM（零代码）
 
-实现 `LLMClient` 协议并注册端点即可，其余链路零改动。以下 OpenAI 兼容客户端可直接复制：
+OpenAI 的 `/chat/completions` 协议已是事实标准（火山方舟 / OpenAI / DeepSeek / GLM /
+Qwen / Kimi 等全部兼容），框架内置了 OpenAI 兼容客户端——**设三个配置即接入，不写任何代码**：
 
-```python
-import json
-import urllib.request
+```bash
+# 方式一：环境变量（对 CLI / serve / Python 全部入口生效）
+export VAF_LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+export VAF_LLM_API_KEY=ark-xxxx
+export VAF_LLM_MODEL=doubao-seed-1.6
 
-from vaf.llm.client import LLMClient, LLMResponse, LLMUsage
-
-
-class OpenAICompatClient(LLMClient):
-    name = "my-provider/model-x"
-    capabilities = ("json", "tools")        # 按实际能力声明；无 stream 则自动走非流式
-
-    def __init__(self, base_url: str, api_key: str, model: str):
-        self._url = base_url.rstrip("/") + "/chat/completions"
-        self._key = api_key
-        self._model = model
-
-    def call(self, messages, *, tools=None, response_schema=None, **opts):
-        body = {"model": self._model, "messages": messages}
-        if response_schema is not None:
-            body["response_format"] = {"type": "json_object"}
-        if tools:
-            body["tools"] = tools
-        req = urllib.request.Request(
-            self._url,
-            data=json.dumps(body).encode(),
-            headers={"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-        msg = data["choices"][0]["message"]
-        usage = data.get("usage") or {}
-        return LLMResponse(
-            content=msg.get("content"),
-            usage=LLMUsage(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)),
-            model=self._model,
-        )
-
-
-app.register_model_endpoint(
-    "official",
-    OpenAICompatClient("https://ark.cn-beijing.volces.com/api/v3", "YOUR_KEY", "doubao-xxx"),
-    tier=1,
-    allowed_classifications={"public", "internal", "sensitive", "confidential"},  # 数据分级硬绑定
-)
+# 方式二：CLI 参数
+vaf serve --llm-base-url ... --llm-api-key ... --llm-model ...
 ```
 
-端点可注册多个（tier 分层 + 数据分级绑定 + 熔断切换）：confidential 数据没有合规端点时
-**直接拒绝，绝不降级路由**。
+生效规则：配置齐备 → 注册 `llm-official` 端点（未配置则保持离线 Mock，demo/测试不受影响）。
+内置客户端能力：json/tools/stream 能力协商、429/5xx 自动重试、直连绕过系统代理、仅标准库零依赖。
+
+多个端点/非 OpenAI 兼容供应商（高级路径）：手写 `LLMClient` 子类并注册——
+端点支持 tier 分层、数据分级硬绑定（confidential 无合规端点直接拒绝，绝不降级路由）与熔断切换：
+
+```python
+app.register_model_endpoint(
+    "official", OpenAICompatClient("https://...", "KEY", "model-x"),
+    tier=1,
+    allowed_classifications={"public", "internal", "sensitive"},  # 数据分级硬绑定
+)
+# 自定义协议：class MyClient(LLMClient): ...  再 register_model_endpoint 即可
+```
 
 ## 部署与运维
 

@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.5.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **218 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.6.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **227 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -94,6 +94,16 @@
 - operator/reviewer 默认角色补 AUDIT_READ（审核台读权限）；
 - 真实服务全流程 curl 冒烟通过（提交→澄清→待审→批准→emergency）；
 - 测试 202 → **218**（test_api.py 17 个：鉴权/RBAC/闭环/卡片格式/OpenAPI/H5）。
+
+
+### 2026-11-09（第七批）· V2.6.0 —— 接入真实 LLM 零代码
+- 内置 OpenAI 兼容客户端（llm/openai_compat.py，纯标准库）：json/tools/stream 能力协商、
+  SSE 流式、429/5xx 重试退避、直连绕系统代理；
+- 三配置零代码接入：VAF_LLM_BASE_URL/API_KEY/MODEL 环境变量或 CLI --llm-* 参数；
+  build_app 装配（CLI 参数 > 环境变量 > 离线 Mock），run/serve/eval 均支持；
+- 修复：低代码枚举字段字符串默认值未转枚举成员（序列化告警）；
+- 测试 218 → **227**（本地 OpenAI 兼容假服务全链路：请求格式/鉴权头/流式 SSE/
+  工具调用解析/429 重试/env 装配/零代码领域经真实 HTTP 跑通）。
 
 ## 测试基线
 

@@ -15,7 +15,28 @@ from .llm.mock import ScriptedMockLLM, tool_call
 from .security.permissions import User
 
 
-def build_app(sqlite_path: Optional[str] = None, webhook_url: Optional[str] = None, notification_hub=None) -> VafApp:
+def _add_llm_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--llm-base-url", default=None, help="OpenAI 兼容服务基址（或环境变量 VAF_LLM_BASE_URL）")
+    parser.add_argument("--llm-api-key", default=None, help="API Key（或 VAF_LLM_API_KEY）")
+    parser.add_argument("--llm-model", default=None, help="模型名（或 VAF_LLM_MODEL）")
+
+
+def _llm_kwargs(args: argparse.Namespace) -> dict:
+    return {
+        "llm_base_url": getattr(args, "llm_base_url", None),
+        "llm_api_key": getattr(args, "llm_api_key", None),
+        "llm_model": getattr(args, "llm_model", None),
+    }
+
+
+def build_app(
+    sqlite_path: Optional[str] = None,
+    webhook_url: Optional[str] = None,
+    notification_hub=None,
+    llm_base_url: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
+    llm_model: Optional[str] = None,
+) -> VafApp:
     """构建 demo 应用：自动发现 domains/ 目录下的领域 + Mock LLM（离线可跑）。"""
     import os
     import sys as _sys
@@ -35,9 +56,19 @@ def build_app(sqlite_path: Optional[str] = None, webhook_url: Optional[str] = No
         notification_hub = NotificationHub(sinks=[webhook_sink(webhook_url)])
 
     app = VafApp(sqlite_path=sqlite_path, notification_hub=notification_hub)
-    app.register_model_endpoint(
-        "demo-mock", ScriptedMockLLM(name="demo-mock", responder=DemoResponder()), tier=1
-    )
+    # 真实 LLM 零代码接入：CLI 参数 > 环境变量 > 离线 Mock（demo/测试路径不受影响）
+    from .llm.openai_compat import OpenAICompatClient, client_from_env
+
+    if llm_base_url and llm_model:
+        client = OpenAICompatClient(llm_base_url, llm_model, llm_api_key or "")
+    else:
+        client = client_from_env()
+    if client is not None:
+        app.register_model_endpoint(client.name, client, tier=1)
+    else:
+        app.register_model_endpoint(
+            "demo-mock", ScriptedMockLLM(name="demo-mock", responder=DemoResponder()), tier=1
+        )
 
     from .runtime.discovery import register_discovered
 
@@ -155,7 +186,11 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    app = build_app(sqlite_path=args.state or None, webhook_url=getattr(args, "webhook", None))
+    app = build_app(
+        sqlite_path=args.state or None,
+        webhook_url=getattr(args, "webhook", None),
+        **_llm_kwargs(args),
+    )
     with open(args.input, "r", encoding="utf-8") as fh:
         payload = json.load(fh)
     request_id = args.request_id or payload.get("raw_id", "") or "cli-run"
@@ -201,7 +236,7 @@ def cmd_clarify(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    app = build_app(sqlite_path=args.state or None)
+    app = build_app(sqlite_path=args.state or None, **_llm_kwargs(args))
     from .eval.dataset import dataset_from_yaml
     from .eval.runner import EvalRunner, Gate
 
@@ -448,6 +483,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         sqlite_path=args.state or ".vaf/state.db",
         webhook_url=None,  # 卡片/webhook 已通过 notification_hub 挂接
         notification_hub=notification_hub,
+        **_llm_kwargs(args),
     )
     keys = ApiKeyStore.from_specs(args.api_key) if args.api_key else None
     gateway = create_gateway(
@@ -538,6 +574,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     run.add_argument("--request-id", default=None)
     run.add_argument("--state", default=None, help="SQLite 状态库路径")
     run.add_argument("--webhook", default=None, help="审核/澄清事件推送地址")
+    _add_llm_args(run)
     run.set_defaults(func=cmd_run)
 
     inspect = sub.add_parser("inspect", help="查看 run 的步骤状态/路由/暂停点/事件")
@@ -567,6 +604,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ev.add_argument("--dataset", required=True, help="黄金集 YAML")
     ev.add_argument("--gates", nargs="*", default=None, help="门禁指标名，如 conclusion_accuracy")
     ev.add_argument("--state", default=None)
+    _add_llm_args(ev)
     ev.set_defaults(func=cmd_eval)
 
     scaffold = sub.add_parser("scaffold", help="生成领域模板（默认低代码 YAML）")
@@ -591,6 +629,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     serve.add_argument("--webhook", default=None, help="原始 JSON webhook（与 --notify-card 可同时用）")
     serve.add_argument("--review-base", default=None, help="卡片/审核台对外可达基址（默认 http://host:port）")
     serve.add_argument("--log-level", default="info")
+    _add_llm_args(serve)
     serve.set_defaults(func=cmd_serve)
 
     preset = sub.add_parser("preset", help="预置领域库（0 分钟即用）")

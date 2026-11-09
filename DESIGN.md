@@ -1,4 +1,4 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.5 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.6 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
@@ -338,6 +338,8 @@ clarification_requested / falsification_triggered / run_finished 推给 sinks；
 ### 8.1 能力协商（`llm/client.py`）
 
 `LLMClient` 协议：`name / capabilities ⊆ {json, tools, stream} / call(messages, tools?, response_schema?, **opts) -> LLMResponse{content, tool_calls, usage} / stream(messages, **opts)`。执行器按能力降级：无 json 能力 → 在 prompt 中注入 Schema + 解析容错（剥离 markdown 围栏）；无 tools 能力 → 工具循环禁用。
+
+**内置 OpenAI 兼容客户端（V2.6，`llm/openai_compat.py`）**：接真实 LLM 零代码——`VAF_LLM_BASE_URL / VAF_LLM_API_KEY / VAF_LLM_MODEL` 三环境变量（或 CLI `--llm-*` 参数）即装配 `llm-official` 端点；json/tools/stream 能力、SSE 流式、429/5xx 重试、直连绕系统代理、纯标准库。未配置时保持离线 Mock（demo/测试路径不变）；非兼容供应商仍可手写 LLMClient 注册。
 
 ### 8.2 自修复重试（B1）
 
