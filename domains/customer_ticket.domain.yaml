@@ -1,0 +1,103 @@
+# 零代码示例领域：客服工单分类（V2.2）
+# 本文件即完整领域定义：契约 / 预处理 / 技能 / 终审 / 证伪 / 编排，零 Python。
+domain: customer_ticket
+version: "1.0.0"
+data_classification: internal
+
+# ---------------------------------------------------------------------------
+# 输入契约：字段表 → 动态模型（raw_id/source/timestamp 由基类自动要求）
+# ---------------------------------------------------------------------------
+input:
+  fields:
+    - {name: subject, type: str, required: true, max: 200, description: 工单主题}
+    - {name: body, type: str, required: true, max: 4000, description: 工单正文}
+    - {name: customer_level, type: str, enum: [normal, vip, svip], default: normal}
+    - {name: order_amount, type: float, min: 0}
+    - {name: attachments, type: list, required: false}
+
+# ---------------------------------------------------------------------------
+# 输出契约：analysis 类自动追加 insufficient_data 哨兵成员
+# ---------------------------------------------------------------------------
+outputs:
+  classification:
+    description: 工单分类结论
+    conclusion_enum: [billing, technical, complaint, manual_review]
+    fields:
+      - {name: subcategory, type: str}
+      - {name: severity, type: str, enum: [low, medium, high]}
+  ticket_entities:
+    kind: entity
+    description: 工单抽取实体
+    fields:
+      - {name: mentioned_products, type: list}
+      - {name: amount_claimed, type: float}
+
+# ---------------------------------------------------------------------------
+# 预处理：内置节点声明式拼装（支持嵌套点路径）
+# ---------------------------------------------------------------------------
+preprocessor:
+  validators:
+    - {type: pii_detection, fields: [subject, body]}
+    - {type: field_presence, fields: [subject, body]}
+    - {type: range, field: order_amount, low: 0, high: 10000000, level: warning}
+
+# ---------------------------------------------------------------------------
+# 技能：提示词模板 + {{沙箱表达式}} 插值（input / upstream / clarifications / config）
+# ---------------------------------------------------------------------------
+skills:
+  - name: entity_extract
+    type: extraction
+    output: ticket_entities
+    prompt: |
+      从工单中抽取提到的产品与金额主张。
+      工单主题：{{ input.subject }}
+      工单正文：{{ input.body }}
+
+  - name: classify
+    type: analysis
+    output: classification
+    config_keys: [ticket.vip_fast_lane]
+    prompt: |
+      工单主题：{{ input.subject }}
+      正文：{{ input.body }}
+      客户等级：{{ input.customer_level }}；订单金额：{{ input.order_amount }}
+      抽取实体：{{ upstream.entity_extract }}
+      VIP 快速通道开关：{{ config['ticket.vip_fast_lane'] }}
+      分类规则：计费争议/扣款问题 → billing；故障/无法使用 → technical；
+      投诉/情绪强烈/要求升级 → complaint；关键信息不足 → 结论 insufficient_data 并追问。
+
+  # 终审：低置信度结论否决并降级 manual_review（无需写代码）
+  - name: complaint_guard
+    type: audit
+    output: classification
+    veto_when: "output.conclusion != 'manual_review' and output.confidence == 'low'"
+    downgrade_to: manual_review
+    confidence_after: medium
+
+# ---------------------------------------------------------------------------
+# 可执行证伪：表达式校验器（命中 when 即触发处置）
+# ---------------------------------------------------------------------------
+falsification_checkers:
+  - checker_id: ticket_resolved_check
+    when: "'已解决' in input.subject"
+
+# ---------------------------------------------------------------------------
+# 编排：与代码领域共用同一套步骤模型（skill/human_review/interaction/router/…）
+# ---------------------------------------------------------------------------
+pipeline:
+  name: customer_ticket
+  domain: customer_ticket
+  version: "1.0.0"
+  steps:
+    - name: entity_extract
+      type: skill
+      skill: entity_extract
+    - name: classify
+      type: skill
+      skill: classify
+      depends_on: [entity_extract]
+      on_schema_fail: retry
+      max_retries: 2
+
+# 结果合成：取 classify 步骤输出（SkillOutput 子类 → 终审自动生效）
+result_from: classify

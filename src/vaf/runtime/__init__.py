@@ -58,4 +58,10 @@ __all__ = [
 # V2.1 追加导出
 from .persistence import RedisStateStore
 from .notification import NotificationHub, webhook_sink
-from .discovery import register_discovered, scan_domain_dirs, load_entrypoint_domains, ENTRY_POINT_GROUP
+from .discovery import (
+    register_discovered,
+    scan_domain_dirs,
+    scan_domain_files,
+    load_entrypoint_domains,
+    ENTRY_POINT_GROUP,
+)

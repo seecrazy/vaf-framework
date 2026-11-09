@@ -119,6 +119,42 @@ class DemoResponder:
         if "「risk_stratification」" in system:
             return _triage("emergency", "high", 1, suggested_actions=["监护转运", "建立静脉通路"])
 
+        # ---------------- customer_ticket（零代码领域） ----------------
+        if "「entity_extract」" in system:
+            return json.dumps(
+                {"mentioned_products": ["云主机"], "amount_claimed": 320.0},
+                ensure_ascii=False,
+            )
+        if "「classify」" in system:
+            import re
+
+            m = re.search(r"工单主题：(.+)", system)
+            subject = m.group(1).strip() if m else ""
+            if "扣款" in subject or "计费" in subject:
+                conclusion, sub = "billing", "重复扣款"
+            elif "投诉" in subject or "升级" in subject:
+                conclusion, sub = "complaint", "服务态度"
+            else:
+                conclusion, sub = "technical", "实例无法启动"
+            data = json.loads(
+                _triage(conclusion, "high", 1, falsification=[])
+            )
+            data.update(
+                conclusion=conclusion,
+                subcategory=sub,
+                severity="medium" if conclusion != "complaint" else "high",
+                falsification=[
+                    {
+                        "signal": "工单标记已解决",
+                        "threshold": "subject 含「已解决」",
+                        "consequence": f"推翻 {conclusion} 分类，转满意度回访",
+                        "check_frequency": "realtime",
+                        "checker_id": "ticket_resolved_check",
+                    }
+                ],
+            )
+            return json.dumps(data, ensure_ascii=False)
+
         # ---------------- ops_incident ----------------
         if "「alert_triage」" in system:
             return _ops_out("critical", "high", suspected_components=["db-proxy"])

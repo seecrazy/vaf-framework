@@ -101,8 +101,26 @@ def cmd_demo(args: argparse.Namespace) -> int:
         f"探测轮数: {r.get('probe_rounds')} 动作: {r.get('actions')}\n"
     )
 
-    # 场景 3：评估 + 门禁
-    print("[3] 评估闭环：黄金集跑分 + 门禁")
+    # 场景 3：零代码领域（customer_ticket.domain.yaml，无任何 Python）
+    print("[3] 零代码领域：customer_ticket.domain.yaml（契约/技能/终审/证伪全在 YAML）")
+    ticket = {
+        "raw_id": "tk-001",
+        "source": "app",
+        "timestamp": "2026-11-09T10:00:00",
+        "subject": "云主机被扣款两次，要求核查",
+        "body": "本月账单多扣了 320 元，订单号 8899，麻烦尽快处理。",
+        "customer_level": "vip",
+        "order_amount": 320.0,
+    }
+    h3 = app.run("customer_ticket", ticket, "demo-run-3")
+    t = h3.result or {}
+    print(
+        f"    终态: {h3.status.value} 分类: {t.get('conclusion')} "
+        f"子类: {t.get('subcategory')} 证伪触发: {h3.falsification_flags or '无'}\n"
+    )
+
+    # 场景 4：评估 + 门禁
+    print("[4] 评估闭环：黄金集跑分 + 门禁")
     from .eval.dataset import dataset_from_dict
     from .eval.runner import EvalRunner, Gate
 
@@ -234,22 +252,78 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
     import os
 
     name = args.name
-    base = os.path.join(args.dir or "domains", name)
-    os.makedirs(base, exist_ok=True)
-    files = {
-        "__init__.py": _SCAFFOLD_INIT % {"name": name},
-        "pipeline.yaml": _SCAFFOLD_YAML % {"name": name},
-        "test_cases.yaml": "domain: %s\ncases: []\n" % name,
-    }
-    for fname, content in files.items():
-        path = os.path.join(base, fname)
+    if args.style == "lowcode":
+        base = args.dir or "domains"
+        os.makedirs(base, exist_ok=True)
+        files = {
+            os.path.join(base, f"{name}.domain.yaml"): _SCAFFOLD_LOWCODE % {"name": name},
+            os.path.join(base, f"{name}.test_cases.yaml"): "domain: %s\ncases: []\n" % name,
+        }
+    else:
+        base = os.path.join(args.dir or "domains", name)
+        os.makedirs(base, exist_ok=True)
+        files = {
+            os.path.join(base, "__init__.py"): _SCAFFOLD_INIT % {"name": name},
+            os.path.join(base, "pipeline.yaml"): _SCAFFOLD_YAML % {"name": name},
+            os.path.join(base, "test_cases.yaml"): "domain: %s\ncases: []\n" % name,
+        }
+    for path, content in files.items():
         if os.path.exists(path) and not args.force:
             print(f"跳过已存在: {path}")
             continue
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(content)
         print(f"生成: {path}")
+    print(
+        "提示：低代码领域用 app.load_domain_file / vaf run 直接运行；"
+        "需要自定义节点或工具时改用 --style code"
+    )
     return 0
+
+
+_SCAFFOLD_LOWCODE = """# %(name)s 领域（vaf scaffold --style lowcode 生成）
+# 本文件即完整领域定义；提示词插值 {{ input.xxx }} / {{ upstream.步骤名 }} 走沙箱表达式。
+domain: %(name)s
+version: "0.1.0"
+data_classification: internal
+
+input:
+  fields:
+    - {name: payload, type: str, required: true, description: TODO 输入主字段}
+
+outputs:
+  main:
+    conclusion_enum: [ok, needs_review]   # insufficient_data 哨兵自动追加
+    fields:
+      - {name: note, type: str}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [payload]}
+
+skills:
+  - name: main_skill
+    type: analysis
+    output: main
+    prompt: |
+      处理以下输入并给出结论（ok / needs_review / insufficient_data）：
+      {{ input.payload }}
+      TODO：在此写领域分类/判断规则。
+
+falsification_checkers: []
+#  - {checker_id: %(name)s_recheck, when: "'已完成' in input.payload"}
+
+pipeline:
+  name: %(name)s
+  domain: %(name)s
+  version: "0.1.0"
+  steps:
+    - name: main_step
+      type: skill
+      skill: main_skill
+
+result_from: main_step
+"""
 
 
 _SCAFFOLD_INIT = '''"""%(name)s 领域包（vaf scaffold 生成）。"""
@@ -382,10 +456,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     ev.add_argument("--state", default=None)
     ev.set_defaults(func=cmd_eval)
 
-    scaffold = sub.add_parser("scaffold", help="生成领域包模板")
+    scaffold = sub.add_parser("scaffold", help="生成领域模板（默认低代码 YAML）")
     scaffold.add_argument("name")
     scaffold.add_argument("--dir", default=None)
     scaffold.add_argument("--force", action="store_true")
+    scaffold.add_argument(
+        "--style", choices=["lowcode", "code"], default="lowcode",
+        help="lowcode=单个 YAML 文件（默认）；code=Python 领域包（完整控制）",
+    )
     scaffold.set_defaults(func=cmd_scaffold)
 
     args = parser.parse_args(argv)

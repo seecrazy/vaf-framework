@@ -64,15 +64,32 @@ def load_entrypoint_domains(group: str = ENTRY_POINT_GROUP) -> List[ModuleType]:
     return found
 
 
+DOMAIN_FILE_SUFFIXES = ("domain.yaml", "domain.yml")
+
+
+def scan_domain_files(paths: List[str]) -> List[str]:
+    """扫描目录下的零代码领域文件（*.domain.yaml / *.domain.yml，V2.2）。"""
+    found: List[str] = []
+    for path in paths:
+        if not path or not os.path.isdir(path):
+            continue
+        for entry in sorted(os.listdir(path)):
+            if entry.endswith(DOMAIN_FILE_SUFFIXES):
+                found.append(os.path.join(path, entry))
+    return found
+
+
 def register_discovered(
     app,
     dirs: Optional[List[str]] = None,
     include_entrypoints: bool = True,
 ) -> List[str]:
-    """发现并注册全部领域，返回注册成功的 pipeline 名列表。"""
+    """发现并注册全部领域（Python 包 + 零代码 YAML 文件），返回 pipeline 名列表。"""
     modules: List[ModuleType] = []
+    domain_files: List[str] = []
     if dirs:
         modules.extend(scan_domain_dirs(dirs))
+        domain_files.extend(scan_domain_files(dirs))
     if include_entrypoints:
         modules.extend(load_entrypoint_domains())
     registered: List[str] = []
@@ -86,5 +103,14 @@ def register_discovered(
             raise VafError(
                 f"domain package '{module.__name__}' failed to register: {exc}"
             ) from exc
+        registered.extend(sorted(set(app.engine._domains.keys()) - before))
+    for path in domain_files:
+        before = set(app.engine._domains.keys())
+        try:
+            app.load_domain_file(path)
+        except VafError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise VafError(f"domain file '{path}' failed to register: {exc}") from exc
         registered.extend(sorted(set(app.engine._domains.keys()) - before))
     return registered

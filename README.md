@@ -1,8 +1,8 @@
-# VAF 2.1 — 垂直领域 Agent 通用可靠性框架
+# VAF 2.2 — 垂直领域 Agent 通用可靠性框架
 
-Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输出可校验」的垂直领域（医疗分诊、投研、信贷审批、运维排障、工单质检……）提供**生产级可靠性骨架**。框架零领域知识；领域开发者只写 4 样东西：**契约（L1）、预处理节点（L2）、推理技能（L3）、Pipeline 编排（L4 配置）**。
+Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输出可校验」的垂直领域（医疗分诊、投研、信贷审批、运维排障、工单质检……）提供**生产级可靠性骨架**。框架零领域知识；**接入一个领域可以只写一个 YAML 文件（V2.2 零代码路径），也可以用四层 Python API 做完整控制，两者可在同一 Pipeline 混用。**
 
-> - 完整设计详见 [DESIGN.md](DESIGN.md)（V1.1→V2.0 问题响应矩阵 + V2.1 易用性/扩展性修订）
+> - 完整设计详见 [DESIGN.md](DESIGN.md)（V1.1→V2.0 问题响应矩阵 + V2.1 易用性/扩展性修订 + V2.2 零代码接入）
 > - 交付台账与已知边界见 [PROGRESS.md](PROGRESS.md)
 
 ## 快速开始
@@ -12,17 +12,65 @@ Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输�
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
 
-vaf demo        # 离线演示：澄清回路 → 人工审核 → 路由探测 → 子流程 → 评估门禁
-pytest          # 161 个用例（~1s），零外部依赖
+vaf demo        # 离线演示：澄清回路 → 审核 → 路由探测 → 零代码领域 → 评估门禁
+pytest          # 186 个用例（~1s），零外部依赖
 ```
 
-## 五分钟接入一个新领域
+## 一分钟接入一个领域（零代码，V2.2 推荐）
 
 ```bash
-vaf scaffold credit_review          # 生成领域包模板（实测可直接加载运行）
+vaf scaffold credit_review      # 生成 credit_review.domain.yaml（可直接加载运行）
 ```
 
-填充四个模块（详见示例领域 `domains/medical_triage/`）：
+编辑这个 YAML——契约、预处理、技能提示词、终审、证伪、编排全部声明式：
+
+```yaml
+domain: credit_review
+input:
+  fields:
+    - {name: monthly_income, type: float, required: true, min: 0}
+    - {name: dti, type: float, required: true}
+outputs:
+  decision:
+    conclusion_enum: [approve, reject, manual_review]   # insufficient_data 哨兵自动追加
+    fields: [{name: reasons, type: list}]
+skills:
+  - name: assess
+    type: analysis
+    output: decision
+    prompt: |
+      月收入 {{ input.monthly_income }}，负债收入比 {{ input.dti }}。
+      硬规则：DTI>0.7 reject；0.5~0.7 manual_review；否则 approve。
+  - name: guard                       # 低置信结论终审否决并降级（零代码）
+    type: audit
+    output: decision
+    veto_when: "output.conclusion != 'manual_review' and output.confidence == 'low'"
+    downgrade_to: manual_review
+    confidence_after: medium
+falsification_checkers:
+  - {checker_id: income_recheck, when: "input.monthly_income < 1000"}
+pipeline:
+  name: credit_review
+  domain: credit_review
+  steps:
+    - {name: assess, type: skill, skill: assess}
+result_from: assess
+```
+
+```python
+app.load_domain_file("domains/credit_review.domain.yaml")
+app.run("credit_review", {...}, request_id="r1")     # 放进 domains/ 即被自动发现
+```
+
+提示词插值 `{{ input.xxx }}` / `{{ upstream.步骤名 }}` / `{{ config['key'] }}` 与条件表达式
+共用同一 AST 白名单沙箱，配置加载期预编译校验。需要自定义节点或工具时再用代码路径，
+不强制二选一。
+
+## 五分钟接入（完整控制，Python 路径）
+
+```bash
+vaf scaffold credit_review --style code
+```
 
 ```python
 class ApprovalConclusion(str, Enum):
@@ -110,13 +158,14 @@ vaf scaffold <domain_name>                            # 生成领域包模板
 
 - **`domains/medical_triage/`** — 澄清回路 + emergency 人工审核（超时 reject）+ 低置信终审降级 + 体温证伪回检 + 运行期配置阈值（ConfigView）+ SQLite 跨实例续跑
 - **`domains/ops_incident/`** — 假设置信度路由 + log_probe 工具探测循环 + 子流程报告 + 失败断点续跑 + 工具补偿
+- **`domains/customer_ticket.domain.yaml`** — **零代码领域**（V2.2）：契约/抽取/分类/终审降级/表达式证伪全部在一个 YAML 文件里
 
 ## 测试
 
 ```bash
-pytest   # 161 个用例：单元（契约/表达式攻击面/自修复/流式/熔断/灰度/漂移/构造器/
-         # webhook 签名/Redis…）+ 端到端（澄清/审核/超时/路由剪枝/子流程/幂等/
-         # 快照漂移/补偿/自定义步骤开闭性/GenerationStep/配置热更联动）
+pytest   # 186 个用例：单元（契约/表达式攻击面/自修复/流式/熔断/灰度/漂移/构造器/
+         # webhook 签名/Redis/低代码…）+ 端到端（澄清/审核/超时/路由剪枝/子流程/幂等/
+         # 快照漂移/补偿/自定义步骤开闭性/GenerationStep/配置热更联动/零代码领域全链路）
 ```
 
 ## 边界声明

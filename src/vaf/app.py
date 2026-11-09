@@ -167,6 +167,43 @@ class VafApp:
         self._domains[name] = {"registration": reg}
 
     # ------------------------------------------------------------------
+    # 零代码领域接入（V2.2）：一个 YAML 文件 = 一个领域
+    # ------------------------------------------------------------------
+    def load_domain_dict(self, data: Dict[str, Any]) -> str:
+        """从配置字典装配并注册领域，返回领域名。"""
+        from .lowcode import load_domain_dict as _load
+
+        parts = _load(data, register_checkers_to=self.falsification)
+        self.register_domain(
+            name=parts["name"],
+            input_contract=parts["input_contract"],
+            pipeline=parts["pipeline"],
+            skills=parts["skills"],
+            preprocessor=parts["preprocessor"],
+            synthesizer=parts["synthesizer"],
+            audit_skill=parts["audit_skill"],
+            data_classification=parts["data_classification"],
+        )
+        return parts["name"]
+
+    def load_domain_file(self, path: str) -> str:
+        """从 *.domain.yaml 装配并注册领域，返回领域名。"""
+        from .lowcode import load_domain_file as _load
+
+        parts = _load(path, register_checkers_to=self.falsification)
+        self.register_domain(
+            name=parts["name"],
+            input_contract=parts["input_contract"],
+            pipeline=parts["pipeline"],
+            skills=parts["skills"],
+            preprocessor=parts["preprocessor"],
+            synthesizer=parts["synthesizer"],
+            audit_skill=parts["audit_skill"],
+            data_classification=parts["data_classification"],
+        )
+        return parts["name"]
+
+    # ------------------------------------------------------------------
     # 运行与交互
     # ------------------------------------------------------------------
     def run(

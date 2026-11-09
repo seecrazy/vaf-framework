@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.1.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **161 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.2.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **186 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -47,6 +47,16 @@
 - 引擎 `validate_pipeline` 的依赖检查对无 `depends_on` 的自定义步骤容错；`handler_for` 对裸 BaseModel 给出引导性报错；
 - PromptManager 防御式模板回退（未注册 ID 不崩溃）；
 - 测试 140 → **161**（新增 test_v21.py 覆盖上述全部特性）。
+
+
+### 2026-11-09（第三批）· V2.2.0 —— 零代码领域接入（低代码优先）
+- `vaf/lowcode.py`：字段表→动态输入/输出契约（结论枚举自动追加哨兵）、{{沙箱表达式}}模板技能
+  （analysis/extraction/generation/audit 四类配置化，终审 veto_when+downgrade_to）、
+  内置节点声明式预处理（验证器支持嵌套点路径）、表达式证伪校验器、result_from 合成器；
+- `app.load_domain_file/load_domain_dict` + 发现机制扫描 `*.domain.yaml` + `vaf scaffold` 默认低代码模板（--style code 保留）；
+- 零代码示例领域 `customer_ticket.domain.yaml`（demo 场景 [3]）；
+- 显式 default 隐含可选；动态枚举 str 混入（与框架约定一致）；
+- 测试 161 → **186**（test_lowcode.py：动态契约/插值安全/终审降级/证伪触发/交互回路/评估门禁/发现/脚手架/错误信息）。
 
 ## 测试基线
 

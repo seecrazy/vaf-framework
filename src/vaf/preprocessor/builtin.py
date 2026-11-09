@@ -60,8 +60,19 @@ class KeywordFilterNode(FilterNode):
         return out
 
 
+def resolve_path(payload: Any, path: str) -> Tuple[bool, Any]:
+    """按点路径取值（'vitals.heart_rate'）；返回 (found, value)。"""
+    node = payload
+    for part in path.split("."):
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            return False, None
+    return True, node
+
+
 class FieldPresenceValidator(ValidatorNode):
-    """必填字段缺失检查：缺失 → WARNING 异常标记。"""
+    """必填字段缺失检查（支持嵌套点路径）：缺失 → WARNING 异常标记。"""
 
     name = "field_presence"
     fail_strategy = "skip"
@@ -71,7 +82,11 @@ class FieldPresenceValidator(ValidatorNode):
         self.level = level
 
     def validate(self, item: RawItem) -> List[Anomaly]:
-        missing = [f for f in self.fields if f not in item.payload or item.payload[f] in (None, "")]
+        missing = [
+            f
+            for f in self.fields
+            if resolve_path(item.payload, f)[1] in (None, "") or not resolve_path(item.payload, f)[0]
+        ]
         return [
             Anomaly(source=f"validator:{self.name}", level=self.level, detail=f"missing field: {m}")
             for m in missing
@@ -79,7 +94,7 @@ class FieldPresenceValidator(ValidatorNode):
 
 
 class RangeValidatorNode(ValidatorNode):
-    """数值字段区间校验：越界 → 异常标记（默认 WARNING，可配置 FATAL）。"""
+    """数值字段区间校验（支持嵌套点路径）：越界 → 异常标记（默认 WARNING，可配置 FATAL）。"""
 
     name = "range_validator"
     fail_strategy = "skip"
@@ -97,8 +112,8 @@ class RangeValidatorNode(ValidatorNode):
         self.level = level
 
     def validate(self, item: RawItem) -> List[Anomaly]:
-        value = item.payload.get(self.field)
-        if value is None:
+        found, value = resolve_path(item.payload, self.field)
+        if not found or value is None:
             return []
         try:
             num = float(value)

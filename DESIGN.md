@@ -1,6 +1,6 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.1 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.2 —— 设计文档
 
-> V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 在 V2.0 之上完成易用性/扩展性专项修订**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
+> V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 完成易用性/扩展性专项修订，V2.2 实现零代码领域接入**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
 ---
 
@@ -482,3 +482,30 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
 - Phase 2.5（V2.1 易用性/扩展性专项）：步骤处理器注册表 ✅、`vaf inspect` ✅、输出快速构造器 ✅、模板按技能路由 ✅、运行期配置读取 ✅、领域自动发现 ✅、webhook 通知 ✅、流式 GenerationStep ✅；
 - Phase 3：审核工作台 UI、评估平台化（真实裁判模型接入 `JudgeModel` 协议）、多租户强化；
 - Phase 4：事件驱动长流程、多模态深化、领域模板市场。
+
+---
+
+## 二十一、零代码领域接入（V2.2，`vaf/lowcode.py`）
+
+目标：**接一个领域可以只写一个 YAML 文件，不写 Python**。声明面覆盖 V2.1 前需编码的六大件：
+
+| 原需编码 | 现声明方式 |
+|---|---|
+| 输入契约（pydantic 模型） | `input.fields` 字段表（类型/必填/默认/min/max/pattern/enum）→ 动态模型；`raw_id/source/timestamp` 基类自动要求 |
+| 输出契约（含哨兵枚举） | `outputs.<name>.conclusion_enum` → 动态 str-Enum，**insufficient_data 哨兵自动追加**（注册期校验必然通过）；`kind: entity` 支持抽取实体 |
+| 技能 build_prompt | `skills[].prompt` 模板 + **{{沙箱表达式}}插值**（命名空间 input/upstream/clarifications/config，与条件表达式共用同一 AST 白名单，配置期预编译校验） |
+| 预处理器装配 | `preprocessor` 内置节点声明（field_presence/range/keyword_filter/hash_dedup/pii_detection/length_truncate/static_scorer；验证器支持嵌套点路径 vitals.heart_rate） |
+| 终审 audit() | `type: audit` + `veto_when` 表达式 + `downgrade_to`/`confidence_after`（命中即否决并降级，修订走同一套契约校验） |
+| 证伪 Checker 类 | `falsification_checkers[].when` 表达式（命名空间 {input, vars}，注册期预编译） |
+| 合成器函数 | `result_from: <step>`（缺省取最后一个终端步骤） |
+
+编排沿用既有步骤模型（skill/human_review/interaction/router/sub_pipeline/generation 全部可用）。
+入口：`app.load_domain_file("x.domain.yaml")` / `app.load_domain_dict(...)`；
+自动发现：`register_discovered` 同时扫描目录下 `*.domain.yaml`；
+脚手架：`vaf scaffold <name>` 默认生成可加载的低代码模板（`--style code` 保留完整 Python 控制）。
+
+**边界（仍需代码的逃生舱）**：自定义预处理节点、工具函数（register_tool）、多步结果映射合成器——
+按需渐进，不强制二选一（低代码技能与代码技能可在同一 Pipeline 混用）。
+
+示例：`domains/customer_ticket.domain.yaml`（工单分类：抽取+分类+低置信终审降级+
+表达式证伪，零 Python）；演示见 `vaf demo` 场景 [3]。
