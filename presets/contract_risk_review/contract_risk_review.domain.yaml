@@ -36,6 +36,8 @@ preprocessor:
     - {type: field_presence, fields: [contract_text]}
   enrichers:
     - {type: length_truncate, field: contract_text, max_chars: 20000}
+    - {type: retrieval, path: knowledge.yaml, top_k: 4, output_field: knowledge,
+       query_fields: [contract_text, contract_type, my_role]}
 
 skills:
   - name: extract_clauses
@@ -53,7 +55,9 @@ skills:
     prompt: |
       已抽取条款：{{ upstream.extract_clauses }}
       合同类型：{{ input.contract_type }}，我方为{{ input.my_role }}（party_a=甲方）。
-      审查规则：
+      【检索到的适用规则】{{ enriched.knowledge }}
+
+      审查规则（检索命中的规则优先适用）：
       1. 违约金过分高于可能损失（可参照损失 30% 的调减实践）→ 至少 medium_risk，
         写入谈判点"调减违约金"；
       2. 管辖约定在对方所在地且对我方不利 → medium_risk 起；

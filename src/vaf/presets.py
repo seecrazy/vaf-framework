@@ -24,6 +24,7 @@ from .errors import VafError
 __all__ = [
     "presets_dir",
     "preset_samples",
+    "preset_eval",
     "load_index",
     "preset_path",
     "install_preset",
@@ -218,3 +219,75 @@ def _load_preset_domain(app, name: str, presets_root: Optional[str]) -> None:
     if not hasattr(module, "register"):
         raise VafError(f"Python 预置 '{name}' 缺少 register(app) 入口")
     module.register(app)
+
+
+def preset_eval(
+    name: str,
+    *,
+    presets_root: Optional[str] = None,
+    include_golden: bool = True,
+):
+    """黄金集评估。
+
+    返回 (EvalReport, mode)：mode ∈ {"offline", "live"}。
+    - live：环境配了 VAF_LLM_*（或调用方已注册真实端点）→ 跑全部用例
+      （samples.expected + golden.yaml 扩充用例），输出真实准确率；
+    - offline：仅跑 samples（脚本化响应），accuracy 恒 1.0，仅验证机制与门禁；
+      真实基线必须配 VAF_LLM_BASE_URL/API_KEY/MODEL 后运行。
+    """
+    import os
+
+    from .app import VafApp
+    from .eval.dataset import GoldenCase
+    from .eval.dataset import GoldenDataset  # noqa: F401
+    from .eval.runner import EvalRunner, Gate
+    from .llm.mock import ScriptedMockLLM
+    from .llm.openai_compat import client_from_env
+
+    samples_file = samples_path(name, presets_root)
+    with open(samples_file, "r", encoding="utf-8") as fh:
+        samples = yaml.safe_load(fh) or {}
+    cases = []
+    for i, sample in enumerate(samples.get("inputs") or [], start=1):
+        cases.append(GoldenCase(
+            case_id=str(sample.get("name") or f"sample-{i}"),
+            input=sample["input"],
+            expected_conclusion=sample.get("expected"),
+        ))
+    if include_golden:
+        golden_file = presets_dir(presets_root) / name / "golden.yaml"
+        if golden_file.is_file():
+            with open(golden_file, "r", encoding="utf-8") as fh:
+                golden = yaml.safe_load(fh) or {}
+            for i, case in enumerate(golden.get("cases") or [], start=1):
+                cases.append(GoldenCase(
+                    case_id=str(case.get("name") or f"golden-{i}"),
+                    input=case["input"],
+                    expected_conclusion=case.get("expected_conclusion"),
+                ))
+    if not cases:
+        raise VafError(f"预置领域 '{name}' 无评估用例（samples.expected / golden.yaml）")
+
+    live = client_from_env() is not None or bool(os.environ.get("VAF_EVAL_LIVE"))
+    app = VafApp()
+    if live:
+        client = client_from_env()
+        app.register_model_endpoint(client.name, client, tier=1)
+    else:
+        app.register_model_endpoint(
+            "preset-mock",
+            ScriptedMockLLM(name="preset-mock", responder=PresetResponder(samples.get("responses") or {})),
+            tier=1,
+        )
+    _load_preset_domain(app, name, presets_root)
+    offline_cases = [c for c in cases if c.expected_conclusion is not None]
+    dataset_cases = cases if live else [c for c in cases[: len(samples.get("inputs") or [])]]
+    from .eval.dataset import GoldenDataset
+
+    dataset = GoldenDataset(domain=name, cases=dataset_cases)
+    report = EvalRunner(app.engine).run(
+        dataset,
+        request_prefix=f"preset-eval:{name}",
+        gates=[Gate(metric="conclusion_accuracy", threshold=1.0)],
+    )
+    return report, ("live" if live else "offline")

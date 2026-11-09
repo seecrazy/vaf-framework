@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Type, Union
@@ -146,9 +147,47 @@ def build_input_model(domain_name: str, spec: "InputSpec") -> Type[DomainInput]:
     return model
 
 
+
+def _optional_output_field(spec: "FieldSpec") -> tuple:
+    """输出契约领域字段：Optional + 类型安全默认值；enum/min/max 约束保留。
+
+    C5：领域扩展字段（评分/清单等）在 insufficient_data 场景天然无值，
+    强制必填会逼模型编造——故一律可选。
+    """
+    if spec.enum:
+        annotation: Any = Optional[_make_enum(spec.enum, "Enum_" + _ident(spec.name), add_sentinel=False)]
+        base: Any = annotation.__args__[0]
+    else:
+        tname = (spec.type or "str").lower()
+        if tname not in _SAFE_TYPES:
+            raise VafError(
+                f"输出字段 '{spec.name}' 类型 '{spec.type}' 不支持；可用：{sorted(set(_SAFE_TYPES))} 或 enum"
+            )
+        base = _SAFE_TYPES[tname]
+        annotation = Optional[base]
+    extra: Dict[str, Any] = {}
+    if spec.min is not None:
+        if base is str:
+            extra["min_length"] = int(spec.min)
+        else:
+            extra["ge"] = spec.min
+    if spec.max is not None:
+        if base is str:
+            extra["max_length"] = int(spec.max)
+        else:
+            extra["le"] = spec.max
+    if base is list:
+        return (annotation, Field(default_factory=list, description=spec.description or "", **extra))
+    if base is dict:
+        return (annotation, Field(default_factory=dict, description=spec.description or "", **extra))
+    return (annotation, Field(None, description=spec.description or "", **extra))
+
+
 def build_output_model(domain_name: str, name: str, spec: "OutputSpec") -> Type[BaseModel]:
     cls_name = f"{_ident(domain_name)}_{_ident(name)}"
-    extra_fields = {f.name: _field_from_spec(f) for f in spec.fields}
+    # 输出契约的领域扩展字段一律可选（C5）：insufficient_data 场景天然无值，
+    # 强制必填会逼模型编造。min/max/enum 约束保留，命中时照常校验。
+    extra_fields = {f.name: _optional_output_field(f) for f in spec.fields}
     if spec.kind == "entity":
         return create_model(cls_name, **extra_fields)
     if not spec.conclusion_enum:
@@ -357,6 +396,22 @@ def _node_truncate(spec: Dict[str, Any]):
     return builtin_nodes.LengthTruncateNode(spec["field"], max_chars=int(spec.get("max_chars", 2000)))
 
 
+def _node_retrieval(spec: Dict[str, Any], base_dir: Optional[str] = None):
+    import os
+
+    from .preprocessor.retrieval import RetrievalNode
+
+    path = spec["path"]
+    if base_dir and not os.path.isabs(path):
+        path = os.path.join(base_dir, path)
+    return RetrievalNode(
+        path,
+        top_k=int(spec.get("top_k", 3)),
+        output_field=spec.get("output_field", "knowledge"),
+        query_fields=spec.get("query_fields"),
+    )
+
+
 def _node_document_extract(spec: Dict[str, Any]):
     from .preprocessor.document import DocumentExtractNode
 
@@ -381,32 +436,35 @@ NODE_FACTORIES: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     "pii_detection": _node_pii,
     "length_truncate": _node_truncate,
     "document_extract": _node_document_extract,
+    "retrieval": _node_retrieval,
     "static_scorer": _node_scorer,
 }
 
 
-def assemble_preprocessor(spec: Optional["PreprocessorSpec"]) -> Optional[Callable[[], Preprocessor]]:
+def assemble_preprocessor(
+    spec: Optional["PreprocessorSpec"], base_dir: Optional[str] = None
+) -> Optional[Callable[[], Preprocessor]]:
     if spec is None:
         return None
 
-    def _build(spec=spec) -> Preprocessor:
+    def _build(spec=spec, base_dir=base_dir) -> Preprocessor:
         pre = Preprocessor()
         for entry in spec.filters or []:
-            pre.filters.append(_make_node(entry, "filters"))
+            pre.filters.append(_make_node(entry, "filters", base_dir))
         for entry in spec.deduplicators or []:
-            pre.deduplicators.append(_make_node(entry, "deduplicators"))
+            pre.deduplicators.append(_make_node(entry, "deduplicators", base_dir))
         for entry in spec.enrichers or []:
-            pre.enrichers.append(_make_node(entry, "enrichers"))
+            pre.enrichers.append(_make_node(entry, "enrichers", base_dir))
         for entry in spec.validators or []:
-            pre.validators.append(_make_node(entry, "validators"))
+            pre.validators.append(_make_node(entry, "validators", base_dir))
         if spec.scorer:
-            pre.scorer = _make_node(spec.scorer, "scorer")
+            pre.scorer = _make_node(spec.scorer, "scorer", base_dir)
         return pre
 
     return _build
 
 
-def _make_node(entry: Dict[str, Any], section: str) -> Any:
+def _make_node(entry: Dict[str, Any], section: str, base_dir: Optional[str] = None) -> Any:
     node_type = entry.get("type")
     factory = NODE_FACTORIES.get(node_type or "")
     if factory is None:
@@ -416,7 +474,7 @@ def _make_node(entry: Dict[str, Any], section: str) -> Any:
         )
     params = {k: v for k, v in entry.items() if k != "type"}
     try:
-        return factory(params)
+        return factory(params, base_dir) if factory is _node_retrieval else factory(params)
     except (KeyError, TypeError, ValueError) as exc:
         raise VafError(f"预处理 {section} 节点 type='{node_type}' 参数错误：{exc}") from exc
 
@@ -532,6 +590,7 @@ def load_domain_dict(
     data: Union[Dict[str, Any], DomainSpec],
     *,
     register_checkers_to: Optional[Any] = None,
+    base_dir: Optional[str] = None,
 ):
     """装配一个零代码领域，返回 register_domain 所需的全部构件。"""
     try:
@@ -619,7 +678,7 @@ def load_domain_dict(
         "input_contract": input_model,
         "pipeline": pipeline,
         "skills": skills,
-        "preprocessor": assemble_preprocessor(spec.preprocessor),
+        "preprocessor": assemble_preprocessor(spec.preprocessor, base_dir=base_dir),
         "synthesizer": _synthesizer,
         "audit_skill": pipeline.audit_skill,
         "data_classification": spec.data_classification,
@@ -635,7 +694,9 @@ def load_domain_file(path: str, *, register_checkers_to: Optional[Any] = None):
         data = yaml.safe_load(fh)
     if not isinstance(data, dict):
         raise VafError(f"领域文件必须是 YAML 映射：{path}")
-    return load_domain_dict(data, register_checkers_to=register_checkers_to)
+    return load_domain_dict(
+        data, register_checkers_to=register_checkers_to, base_dir=os.path.dirname(os.path.abspath(path))
+    )
 
 
 def _require_output(

@@ -251,6 +251,7 @@ class InteractionStepHandler(StepHandler):
             ss.output_contract = type(output).__name__
             ctx.typed[step.name] = output
             ss.status = StepStatusEnum.SUCCEEDED
+            engine._check_falsification_realtime(ctx.state, step.name, output)
             return False
 
         if ss.loop_count >= step.max_rounds:

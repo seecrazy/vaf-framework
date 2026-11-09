@@ -326,6 +326,21 @@ def cmd_preset_sample(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preset_eval(args: argparse.Namespace) -> int:
+    from .presets import preset_eval
+
+    report, mode = preset_eval(args.name, presets_root=args.presets_dir)
+    label = "真实 LLM" if mode == "live" else "离线（脚本响应，机制演示；真实基线需配 VAF_LLM_*）"
+    print(f"== {args.name} 黄金集评估 [{label}] ==")
+    print(f"  用例: {report.total}  指标: {report.metrics}")
+    print(f"  门禁: {'通过' if report.gate_passed else report.failed_gates}")
+    for case in report.cases:
+        mark = "✓" if case.correct else "✗"
+        extra = f" -> {case.conclusion}" if not case.correct else ""
+        print(f"  {mark} {case.case_id}（{case.status}）{extra}")
+    return 0 if report.gate_passed else 1
+
+
 def cmd_scaffold(args: argparse.Namespace) -> int:
     import os
 
@@ -700,6 +715,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_sample.add_argument("name")
     p_sample.add_argument("--presets-dir", default=None)
     p_sample.set_defaults(func=cmd_preset_sample)
+
+    p_eval = preset_sub.add_parser("eval", help="黄金集评估（配 VAF_LLM_* 得真实准确率）")
+    p_eval.add_argument("name")
+    p_eval.add_argument("--presets-dir", default=None)
+    p_eval.set_defaults(func=cmd_preset_eval)
 
     p_install = preset_sub.add_parser("install", help="安装到 domains/（即被自动发现）")
     p_install.add_argument("name")

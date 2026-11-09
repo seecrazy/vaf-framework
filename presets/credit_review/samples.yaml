@@ -1,7 +1,8 @@
-# credit_review 预置领域离线样例（vaf preset try 使用；也用作接入参考）
-# responses 按技能名给出脚本化 LLM 响应（离线体验用；接真实模型后无需此文件）
+# credit_review 深度编排版离线样例（V2.8；expected 字段供 vaf preset eval 黄金基线）
+# 四个样例覆盖四种终局：直通预批 / 灰区人工结论 / 大额→人工审核暂停 / 失业→澄清暂停
 inputs:
-  - name: 良好申请人（DTI 低、征信优）
+  - name: 良好申请人（DTI 低、征信优 → 直通 pre_approved）
+    expected: pre_approved
     input:
       raw_id: cr-sample-1
       source: loan_app
@@ -14,7 +15,8 @@ inputs:
       employment: stable_employed
       loan_purpose: 装修
 
-  - name: 高负债申请人（DTI 偏高、征信一般）
+  - name: 高负债申请人（DTI 灰区 + 征信一般 → manual_review）
+    expected: manual_review
     input:
       raw_id: cr-sample-2
       source: loan_app
@@ -27,19 +29,44 @@ inputs:
       employment: stable_employed
       loan_purpose: 教育
 
+  - name: 大额预批（150 万 → 触发人工审核暂停）
+    expected: pre_approved   # 审核自动批准后的终态（触发审核的断言由 preset try 展示）
+    input:
+      raw_id: cr-sample-3
+      source: loan_app
+      timestamp: "2026-11-09T10:02:00"
+      loan_amount: 1500000
+      term_months: 60
+      monthly_income: 80000
+      monthly_debt_payment: 5000
+      credit_score: 750
+      employment: stable_employed
+      loan_purpose: 经营
+
+  - name: 失业申请人（无收入佐证 → 触发澄清暂停）
+    expected: manual_review  # 澄清后仍无收入佐证 → 人工
+    input:
+      raw_id: cr-sample-4
+      source: loan_app
+      timestamp: "2026-11-09T10:03:00"
+      loan_amount: 100000
+      term_months: 24
+      monthly_income: 0
+      monthly_debt_payment: 0
+      credit_score: 650
+      employment: unemployed
+      loan_purpose: 教育
+
 responses:
   assess:
-    # 按调用顺序依次返回；两份样例分别对应 pre_approved / manual_review
+    # 按调用序对应四个样例（检索规则随输入注入，响应结论与之自洽）
     - |
       {
-        "conclusion": "pre_approved",
-        "confidence": "high",
-        "dti_computed": 0.26,
-        "risk_factors": ["多头借贷查询次数中等"],
-        "suggested_adjustments": [],
+        "conclusion": "pre_approved", "confidence": "high",
+        "dti_computed": 0.26, "risk_factors": [], "suggested_adjustments": [],
         "findings": [
-          {"finding_id": "f1", "claim": "推算 DTI 约 0.26，低于 0.40 审慎线", "evidence_refs": ["ev1"]},
-          {"finding_id": "f2", "claim": "征信评分 720 高于 600 通过线", "evidence_refs": ["ev2"]}
+          {"finding_id": "f1", "claim": "推算 DTI 0.26 低于 0.40 通过线", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "征信 720 高于 600 通过线", "evidence_refs": ["ev2"]}
         ],
         "evidence": [
           {"ev_id": "ev1", "content": "monthly_income=30000 monthly_debt_payment=2000 loan_amount=200000 term=36", "source_ref": "s1"},
@@ -47,28 +74,70 @@ responses:
         ],
         "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+征信报告"}],
         "falsification": [
-          {"signal": "征信复查评分显著下降", "threshold": "复查评分 < 600", "consequence": "撤销 pre_approved 转人工", "check_frequency": "realtime", "checker_id": "credit_score_recheck"}
+          {"signal": "征信复查显著下降", "threshold": "复查评分 < 600", "consequence": "撤销预批转人工", "check_frequency": "realtime", "checker_id": "credit_score_recheck"}
         ],
         "data_classification": "sensitive"
       }
     - |
       {
-        "conclusion": "manual_review",
-        "confidence": "medium",
+        "conclusion": "manual_review", "confidence": "medium",
         "dti_computed": 0.58,
-        "risk_factors": ["DTI 0.58 超过 0.50 直接否决线的边缘（降额后可评）", "征信评分 560 低于 600 人工线"],
+        "risk_factors": ["DTI 0.58 超审慎线", "征信 560 低于 600 人工线"],
         "suggested_adjustments": ["额度降至 200000 元", "期限延长至 48 个月"],
         "findings": [
-          {"finding_id": "f1", "claim": "推算 DTI 约 0.58，超出舒适区间", "evidence_refs": ["ev1"]},
-          {"finding_id": "f2", "claim": "征信评分 560 命中人工复核线", "evidence_refs": ["ev2"]}
+          {"finding_id": "f1", "claim": "DTI 0.58 超出舒适区间", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "征信 560 命中人工线", "evidence_refs": ["ev2"]}
         ],
         "evidence": [
-          {"ev_id": "ev1", "content": "monthly_income=18000 monthly_debt_payment=9500 loan_amount=500000 term=24", "source_ref": "s1"},
+          {"ev_id": "ev1", "content": "monthly_income=18000 monthly_debt_payment=9500 loan_amount=500000", "source_ref": "s1"},
           {"ev_id": "ev2", "content": "credit_score=560", "source_ref": "s1"}
         ],
         "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+征信报告"}],
         "falsification": [
-          {"signal": "补充其他收入证明", "threshold": "DTI 降至 0.45 以下", "consequence": "可重新进入自动预审", "check_frequency": "event_driven"}
+          {"signal": "补充其他收入证明", "threshold": "DTI 降至 0.45 以下", "consequence": "重新进入自动预审", "check_frequency": "event_driven"}
+        ],
+        "data_classification": "sensitive"
+      }
+    - |
+      {
+        "conclusion": "pre_approved", "confidence": "high",
+        "dti_computed": 0.31,
+        "risk_factors": ["大额申请（150 万）超过单户复核线，需资深审批"],
+        "suggested_adjustments": [],
+        "findings": [
+          {"finding_id": "f1", "claim": "DTI 0.31 通过，但金额触发大额复核路由", "evidence_refs": ["ev1"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "monthly_income=80000 loan_amount=1500000 credit_score=750", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+征信报告"}],
+        "falsification": [
+          {"signal": "征信复查显著下降", "threshold": "复查评分 < 600", "consequence": "撤销预批", "check_frequency": "realtime", "checker_id": "credit_score_recheck"}
+        ],
+        "data_classification": "sensitive"
+      }
+    - |
+      {
+        "conclusion": "insufficient_data", "confidence": "low",
+        "clarifying_questions": ["失业期间是否有其他收入来源（租金/投资收益/配偶共同借款）？", "能否提供失业前 12 个月银行流水佐证历史收入？"],
+        "data_gaps": [{"item": "收入来源证明", "reason": "not_disclosed", "impact": "significant"}],
+        "data_classification": "sensitive"
+      }
+    - |
+      {
+        "conclusion": "manual_review", "confidence": "medium",
+        "dti_computed": 0.0,
+        "risk_factors": ["失业状态且收入佐证不足", "偿还能力依赖未核实的外部收入"],
+        "suggested_adjustments": ["要求增加共同借款人或提供租金收益证明", "额度降至 50000 元"],
+        "findings": [
+          {"finding_id": "f1", "claim": "失业且澄清回答未提供可核实收入", "evidence_refs": ["ev1"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "employment=unemployed monthly_income=0 澄清回答未提供收入证明", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L1", "label": "申请表+澄清回答"}],
+        "falsification": [
+          {"signal": "补充共同借款人或收入证明", "threshold": "通过流水核验", "consequence": "重新进入自动预审", "check_frequency": "event_driven"}
         ],
         "data_classification": "sensitive"
       }

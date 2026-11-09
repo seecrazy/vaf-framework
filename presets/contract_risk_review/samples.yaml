@@ -1,6 +1,7 @@
 # contract_risk_review 预置领域离线样例（vaf preset try）
 inputs:
   - name: 采购合同（高额违约金 + 对方管辖）
+    expected: high_risk
     input:
       raw_id: ct-sample-1
       source: legal_upload
@@ -14,6 +15,7 @@ inputs:
       my_role: party_a
 
   - name: 标准服务合同（风险较低）
+    expected: low_risk
     input:
       raw_id: ct-sample-2
       source: legal_upload

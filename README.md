@@ -34,7 +34,9 @@ vaf preset try credit_review        # 离线体验（样例输入 + 脚本化响
 vaf preset install credit_review    # 复制到 domains/ 即被自动发现 → 接上真实 LLM 即用
 ```
 
-`credit_review` 同时附**代码风格孪生实现**（`presets/credit_review/credit_review_python/`）：
+预置已含**知识增强**：声明式规则库（`knowledge.yaml`）+ 检索节点把命中规则注入提示词（credit 的信贷风控 6 条、合同审查的民法典 10 条）；`vaf preset eval credit_review` 在配置 `VAF_LLM_*` 后输出真实准确率并过门禁（黄金集含 DTI/征信/用途边界用例）。
+
+`credit_review` 同时是**深度编排旗舰**（检索+澄清追问+大额路由人工审核四原语齐用）并附**代码风格孪生实现**（`presets/credit_review/credit_review_python/`）：
 同一领域两种写法对照，是理解"声明式何时够用、何时转代码"的最好教材。SAP FICO 预置则演示了
 反向决策——跨行借贷求和超出声明式能力，因此整体采用 Python 变体。
 
@@ -227,7 +229,7 @@ vaf serve --port 8000 \
 
 ```bash
 vaf demo                                     # 离线全流程演示
-vaf preset list / show / try / install       # 预置领域库
+vaf preset list / show / try / install / sample / eval      # 预置领域库（eval=黄金集准确率，配 LLM 出真实基线）
 vaf scaffold <name> [--style code]           # 生成领域模板（默认低代码 YAML）
 vaf run --domain <d> --input case.json|form.yaml|rows.csv [--request-id r1] [--webhook URL]   # yaml/csv（表头逐行）/json 数组=批量
 vaf inspect <run_id> [--json]                # run 排障一屏看清（步骤/路由/暂停点/事件）

@@ -1,4 +1,4 @@
-# 垂直领域 Agent 通用可靠性框架 VAF 2.7 —— 设计文档
+# 垂直领域 Agent 通用可靠性框架 VAF 2.8 —— 设计文档
 
 > V2.0 在 V1.1 四层骨架基础上，针对设计评审发现的 5 个架构缺口与 10 处接口/代码硬伤进行系统性修订；**V2.1 易用性/扩展性专项 → V2.2 零代码领域接入 → V2.3 预置领域库（0 分钟即用）**（步骤处理器注册表、流式步骤、快速构造器、模板路由、运行期配置、inspect 排障、领域自动发现、webhook 通知、Redis 存储）。本文档与 `src/vaf/` 实现代码一一对应，所有接口签名以代码为准。
 
@@ -182,7 +182,7 @@ SkillOutput (pydantic, extra=forbid)
 
 ### 5.4 内置组件库（`preprocessor/builtin.py`）
 
-`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）、**`DocumentExtractNode`（V2.7：http(s)/本地/data: URL 文档文本抽取，html 剥标签；PDF/DOCX 注入自定义 extractor）**。
+`HashDeduplicateNode`（payload 指纹去重）、`KeywordFilterNode`、`FieldPresenceValidator`（缺失字段→anomaly）、`RangeValidatorNode`（数值区间）、`PIIDetectionNode`（正则检出 PII→anomaly，配合脱敏）、`LengthTruncateNode`、`StaticScorerNode`（字段映射打分）、**`DocumentExtractNode`（V2.7：http(s)/本地/data: URL 文档文本抽取，html 剥标签；PDF/DOCX 注入自定义 extractor）**、**`RetrievalNode`（V2.8：YAML 规则库 + BM25-lite 关键词检索，命中条目经 enriched.knowledge 注入提示词；可注入向量检索 retriever）**。
 
 ### 5.5 执行顺序
 
@@ -558,4 +558,16 @@ V2.0 明确支持：流程可预结构化（DAG）+ 受控动态（Router/子流
   （#/ 待办双列、#/task/{id} 审批、#/run/{id}/clarify 澄清问答），Key 存 localStorage；
 - **CLI**：`vaf serve --api-key ... --notify-card dingtalk=URL ... --review-base ...`；
 - 可选依赖：`pip install "vaf[api]"`（fastapi+uvicorn），核心框架零新增硬依赖。
+
+### V2.8 知识与评测增强（对应预置质量差距评审的三项落地）
+- **检索增强（RAG 入门层）**：`preprocessor/retrieval.py`——YAML 规则库 + BM25-lite
+  关键词检索，`{type: retrieval, path: knowledge.yaml}` 声明式接入，
+  命中条目以 `{{ enriched.knowledge }}` 注入提示词；Python 路径可注入向量检索 retriever；
+- **credit_review 升级深度编排旗舰**：retrieval + interaction + router + human_review
+  四原语齐用（失业追问 / 大额 100 万转审 / 审核超时保守拒绝）；contract_risk_review
+  接入 10 条法条规则库；
+- **黄金集评估基线**：samples.expected + golden.yaml（credit 7 个边界扩充用例）；
+  `vaf preset eval <name>`——配 VAF_LLM_* 得真实准确率与门禁，离线模式为机制演示；
+- 框架修复：① 低代码输出契约领域字段一律可选（C5 复现修复：哨兵场景不再逼造）；
+  ② interaction 步骤成功路径补证伪实时回检。
 

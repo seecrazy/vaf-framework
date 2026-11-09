@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.7.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **241 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.8.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **253 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -115,6 +115,17 @@
   低代码领域的声明式预处理从未被执行——已接线并加引擎级回归测试锁定；
 - CLI 输入多格式：.json（对象/数组=批量）、.yaml/.yml、.csv（表头逐行=批量，request_id 加序号）；
 - 测试 230 → **241**。
+
+
+### 2026-11-09（第九批）· V2.8.0 —— 知识与评测增强（预置质量差距三项落地）
+- RetrievalNode：YAML 规则库 + BM25-lite 检索（零依赖），声明式接入，
+  {{ enriched.knowledge }} 注入提示词；可注入向量 retriever；
+- credit_review 深度编排旗舰（retrieval+interaction+router+human_review 四原语，
+  四样例四种终局：直通/灰区/审核暂停/澄清暂停）；contract_risk_review 法条规则库 10 条；
+- 黄金集基线：samples.expected + golden.yaml（credit 7 边界用例）+ vaf preset eval
+  （配 VAF_LLM_* 真实准确率+门禁；离线=机制演示）；
+- 修复：低代码输出领域字段必填逼造（C5 复现）；interaction 步骤漏证伪实时回检；
+- 测试 241 → **253**（检索排序/注入/旗舰四终局/规则命中注入/离线与 live 评估/黄金用例契约校验）。
 
 ## 测试基线
 

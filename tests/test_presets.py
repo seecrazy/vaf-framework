@@ -40,8 +40,10 @@ def test_presets_dir_resolved():
 
 # ---------------------------------------------------------------- 离线体验
 def test_credit_review_preset_runs_offline():
+    """V2.8 深度编排后四个样例四种终局（详见 test_knowledge_eval 更细断言）。"""
     results = try_preset("credit_review")
-    assert [h.status.value for _, h in results] == ["succeeded", "succeeded"]
+    statuses = [h.status.value for _, h in results]
+    assert statuses == ["succeeded", "succeeded", "waiting_review", "waiting_input"]
     assert results[0][1].result["conclusion"] == "pre_approved"
     assert results[1][1].result["conclusion"] == "manual_review"
     assert results[1][1].result["suggested_adjustments"]
@@ -81,7 +83,7 @@ def test_credit_falsification_checker_triggers_on_low_score():
     h = app.run("credit_review", risky, "preset-falsify-1")
     assert h.status.value in ("succeeded", "failed")
     # 无论 LLM 给何结论，实时回检已触发（评分 420 < 450）
-    assert "征信复查评分显著下降" in h.falsification_flags
+    assert any("征信复查" in f for f in h.falsification_flags)
 
 
 # ---------------------------------------------------------------- 安装

@@ -1,6 +1,7 @@
 # investment_research_note 预置领域离线样例（vaf preset try）
 inputs:
   - name: 消费公司（现金流匹配、逻辑获支撑）
+    expected: thesis_supported
     input:
       raw_id: iv-sample-1
       source: research_intake
@@ -14,6 +15,7 @@ inputs:
       my_thesis: 公司盈利质量扎实，现金流优于账面利润，业绩可持续性强。
 
   - name: 并购后遗症公司（商誉高企+现金流背离，逻辑被削弱）
+    expected: thesis_weakened
     input:
       raw_id: iv-sample-2
       source: research_intake

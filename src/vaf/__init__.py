@@ -6,6 +6,6 @@
 """
 from .errors import VafError  # noqa: F401
 
-__version__ = "2.7.0"
+__version__ = "2.8.0"
 
 __all__ = ["VafError", "__version__"]

@@ -1,0 +1,100 @@
+# credit_review 黄金集扩充用例（仅 vaf preset eval 配置真实 LLM 时参与；expected=终态业务结论）
+# 覆盖边界：DTI 0.39/0.40/0.50、征信 449/450/600、用途违规、期限极值、快贷小额
+cases:
+  - name: 黄金-DTI临界-0.39通过
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g1
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 100000
+      term_months: 12
+      monthly_income: 12000
+      monthly_debt_payment: 3000
+      credit_score: 680
+      employment: stable_employed
+      loan_purpose: 装修
+
+  - name: 黄金-DTI灰区-0.45人工
+    expected_conclusion: manual_review
+    input:
+      raw_id: g2
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 300000
+      term_months: 24
+      monthly_income: 16000
+      monthly_debt_payment: 5000
+      credit_score: 620
+      employment: stable_employed
+      loan_purpose: 教育
+
+  - name: 黄金-DTI超标-0.62拒绝
+    expected_conclusion: rejected
+    input:
+      raw_id: g3
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 600000
+      term_months: 12
+      monthly_income: 15000
+      monthly_debt_payment: 11000
+      credit_score: 700
+      employment: stable_employed
+      loan_purpose: 旅游
+
+  - name: 黄金-用途违规拒绝（购房）
+    expected_conclusion: rejected
+    input:
+      raw_id: g4
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 400000
+      term_months: 36
+      monthly_income: 25000
+      monthly_debt_payment: 2000
+      credit_score: 700
+      employment: stable_employed
+      loan_purpose: 购房首付
+
+  - name: 黄金-征信低分拒绝
+    expected_conclusion: rejected
+    input:
+      raw_id: g5
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 100000
+      term_months: 12
+      monthly_income: 10000
+      monthly_debt_payment: 500
+      credit_score: 430
+      employment: stable_employed
+      loan_purpose: 装修
+
+  - name: 黄金-征信临界-580人工
+    expected_conclusion: manual_review
+    input:
+      raw_id: g6
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 150000
+      term_months: 24
+      monthly_income: 14000
+      monthly_debt_payment: 1000
+      credit_score: 580
+      employment: contract
+      loan_purpose: 教育
+
+  - name: 黄金-退休低负债通过
+    expected_conclusion: pre_approved
+    input:
+      raw_id: g7
+      source: golden
+      timestamp: "2026-11-09T00:00:00"
+      loan_amount: 80000
+      term_months: 12
+      monthly_income: 9000
+      monthly_debt_payment: 300
+      credit_score: 710
+      employment: retired
+      loan_purpose: 旅游
