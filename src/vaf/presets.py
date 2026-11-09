@@ -57,9 +57,25 @@ def load_index(explicit_dir: Optional[str] = None) -> List[Dict[str, Any]]:
         data = yaml.safe_load(fh) or {}
     presets = data.get("presets") or []
     for entry in presets:
-        if not preset_path(entry["name"], explicit_dir).exists():
-            raise VafError(f"预置领域 '{entry['name']}' 的 YAML 文件缺失")
+        if not preset_path(entry["name"], explicit_dir).exists() and not (
+            package_dir(entry["name"], explicit_dir) / "__init__.py"
+        ).exists():
+            raise VafError(f"预置领域 '{entry['name']}' 的 YAML/Python 包均缺失")
     return presets
+
+
+def package_dir(name: str, explicit_dir: Optional[str] = None) -> Path:
+    """Python 变体：预置目录下的同名包目录（含 __init__.py 与 register）。"""
+    return presets_dir(explicit_dir) / name / name
+
+
+def preset_kind(name: str, explicit_dir: Optional[str] = None) -> str:
+    """lowcode（*.domain.yaml）| python（同名包目录）。"""
+    if preset_path(name, explicit_dir).exists():
+        return "lowcode"
+    if (package_dir(name, explicit_dir) / "__init__.py").exists():
+        return "python"
+    raise VafError(f"预置领域 '{name}' 既无 YAML 也无 Python 包")
 
 
 def preset_path(name: str, explicit_dir: Optional[str] = None) -> Path:
@@ -71,14 +87,21 @@ def samples_path(name: str, explicit_dir: Optional[str] = None) -> Path:
 
 
 def install_preset(name: str, target_dir: str = "domains", explicit_dir: Optional[str] = None) -> Path:
-    """把预置领域 YAML 复制到目标目录（默认 domains/，即被自动发现）。"""
-    src = preset_path(name, explicit_dir)
+    """安装预置到目标目录（默认 domains/，即被自动发现）：YAML 复制文件 / Python 复制包目录。"""
     target = Path(target_dir)
     target.mkdir(parents=True, exist_ok=True)
-    dest = target / src.name
+    if preset_kind(name, explicit_dir) == "lowcode":
+        src = preset_path(name, explicit_dir)
+        dest = target / src.name
+        if dest.exists():
+            raise VafError(f"目标已存在：{dest}（如需覆盖请手动删除）")
+        shutil.copyfile(src, dest)
+        return dest
+    src_pkg = package_dir(name, explicit_dir)
+    dest = target / src_pkg.name
     if dest.exists():
         raise VafError(f"目标已存在：{dest}（如需覆盖请手动删除）")
-    shutil.copyfile(src, dest)
+    shutil.copytree(src_pkg, dest)
     return dest
 
 
@@ -135,10 +158,27 @@ def try_preset(
             ScriptedMockLLM(name="preset-mock", responder=PresetResponder(samples.get("responses") or {})),
             tier=1,
         )
-    app.load_domain_file(str(preset_path(name, presets_root)))
+    _load_preset_domain(app, name, presets_root)
 
     results = []
     for sample in inputs:
         handle = app.run(name, sample["input"], f"preset-try:{name}:{sample['input'].get('raw_id', '')}")
         results.append((sample.get("name", sample["input"].get("raw_id", "?")), handle))
     return results
+
+
+def _load_preset_domain(app, name: str, presets_root: Optional[str]) -> None:
+    """按变体加载：lowcode → load_domain_file；python → 导入同名包并 register。"""
+    import importlib
+    import sys
+
+    if preset_kind(name, presets_root) == "lowcode":
+        app.load_domain_file(str(preset_path(name, presets_root)))
+        return
+    pkg_root = str(presets_dir(presets_root) / name)
+    if pkg_root not in sys.path:
+        sys.path.insert(0, pkg_root)
+    module = importlib.import_module(name)
+    if not hasattr(module, "register"):
+        raise VafError(f"Python 预置 '{name}' 缺少 register(app) 入口")
+    module.register(app)

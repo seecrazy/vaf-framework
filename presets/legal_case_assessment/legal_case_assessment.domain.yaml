@@ -1,0 +1,96 @@
+# =============================================================================
+# 预置领域：legal_case_assessment 民商事诉讼案件评估（零代码，V2.4 预置库）
+# -----------------------------------------------------------------------------
+# 知识依据（律师实务常见口径；本预置不构成法律意见，结论须经执业律师复核）：
+# - 举证责任："谁主张谁举证"，特定情形举证责任倒置
+#   （《最高人民法院关于民事诉讼证据的若干规定》）；民事证明标准为
+#   "高度盖然性"；书证原件与电子数据（转账凭证/聊天记录）的证明力分层；
+# - 诉讼时效：《民法典》第 188 条，普通时效 3 年，自知道或应当知道权利
+#   受损及义务人之日起算；时效届满抗辩成立则丧失胜诉权（自然债务）；
+# - 劳动争议：仲裁前置（《劳动争议调解仲裁法》），仲裁时效 1 年（第 27 条）；
+# - 程序策略：管辖异议、财产保全（民诉法保全条款）、公告送达、
+#   诉讼成本与调解/和解的比较。
+# =============================================================================
+domain: legal_case_assessment
+version: "1.0.0"
+data_classification: confidential
+
+input:
+  fields:
+    - {name: case_facts, type: str, required: true, max: 40000, description: 案情描述}
+    - {name: case_type, type: str, enum: [loan_dispute, labor_dispute, contract_dispute, tort, company_dispute, other], default: other}
+    - {name: our_role, type: str, enum: [plaintiff, defendant], default: plaintiff}
+    - {name: evidence_list, type: list, required: false, description: 已有证据清单（如借条原件、银行转账记录、微信聊天记录）}
+    - {name: dispute_amount, type: float, required: false, min: 0, description: 争议标的额（元）}
+    - {name: key_dates, type: dict, required: false, description: 关键时间（如 last_contact_date 债权最后一次主张时间）}
+
+outputs:
+  assessment:
+    conclusion_enum: [favorable, neutral, unfavorable, needs_attorney_review]
+    fields:
+      - {name: cause_of_action_guess, type: str, description: 可能的案由（参照民事案件案由规定）}
+      - {name: key_evidence_gaps, type: list, description: 证据缺口（决定胜负的关键缺失）}
+      - {name: strategy_suggestions, type: list, description: 程序与实体策略建议}
+      - {name: limitation_risk, type: str, enum: [none, warning, critical], description: 时效风险}
+      - {name: cost_benefit_note, type: str, description: 诉讼费/保全成本与标的额比较}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [case_facts, case_type]}
+    - {type: pii_detection, fields: [case_facts]}
+
+skills:
+  - name: assess_case
+    type: analysis
+    output: assessment
+    config_keys: [legal.strict_limitation_mode]
+    prompt: |
+      你是民商事诉讼评估助手。案情：{{ input.case_facts }}
+      案件类型：{{ input.case_type }}；我方是{{ input.our_role }}（plaintiff=原告）。
+      已有证据：{{ input.evidence_list }}；争议标的额：{{ input.dispute_amount }}；
+      关键时间：{{ input.key_dates }}；严格时效模式：{{ config['legal.strict_limitation_mode'] }}
+
+      评估规则：
+      1. 按"高度盖然性"标准评估：主张要件事实的证据是否形成链条；
+         书证原件>复印件，转账凭证需与借贷合意证据相互印证；
+      2. 时效：普通时效 3 年（民法典 188 条）；劳动争议仲裁时效 1 年
+         （调解仲裁法 27 条）；临近届满或已过 → limitation_risk=warning/critical，
+         已过时效且对方极可能抗辩 → 结论至少 neutral 并把时效抗辩写入风险；
+      3. 证据缺口逐条写 key_evidence_gaps（如"仅有转账无借贷合意证据"）；
+      4. 策略建议含程序选项：财产保全、管辖审查、公告送达适用、
+         调解/和解与诉讼成本比较（参考标的额估算诉讼费区间）；
+      5. 关键事实或证据描述缺失 → insufficient_data 并追问（追问要具体到证据名称与日期）；
+      6. 案情显示对方证据明显更优（我方为被告且对方证据链完整）→ unfavorable。
+      所有判断必须引用案情原文作为 evidence（sources 标 L2=当事人陈述，转写材料标 L2/L3）。
+
+  - name: strategy_guard
+    type: audit
+    output: assessment
+    veto_when: "output.conclusion in ['favorable', 'unfavorable'] and output.confidence != 'high'"
+    downgrade_to: needs_attorney_review
+    confidence_after: medium
+
+falsification_checkers:
+  - {checker_id: new_evidence_submitted, when: "'新证据' in input.case_facts"}
+
+pipeline:
+  name: legal_case_assessment
+  domain: legal_case_assessment
+  version: "1.0.0"
+  steps:
+    - name: assess_case
+      type: skill
+      skill: assess_case
+      on_schema_fail: retry
+      max_retries: 2
+    # 高标的额可加律师复核步骤（示例）：
+    # - name: senior_review
+    #   type: human_review
+    #   depends_on: [assess_case]
+    #   trigger_condition: "input.dispute_amount > 5000000"
+    #   timeout_seconds: 172800
+    #   on_timeout: reject
+    #   review_fields: [conclusion, limitation_risk]
+    #   required_role: reviewer
+
+result_from: assess_case

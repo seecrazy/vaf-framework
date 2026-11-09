@@ -1,0 +1,82 @@
+# =============================================================================
+# 预置领域：investment_research_note 投资研究要点评审（零代码，V2.4 预置库）
+# -----------------------------------------------------------------------------
+# 定位与合规红线：本预置是**研究辅助**，不做投资建议、不给目标价与买卖评级
+# （证券投资咨询业务须持牌并遵守适当性要求）；输出强制携带免责声明标签。
+# 知识依据：
+# - 盈利质量：扣非净利与经营现金流净额的匹配度是核心交叉验证
+#   （利润表权责发生制 vs 现金流量表收付实现制）；
+# - 风险信号（会计视角常识）：商誉需年度减值测试（《企业会计准则第 8 号——
+#   资产减值》）；应收增速持续远超营收增速；存贷双高；非经常性损益占比过高；
+# - 估值方法适用性：稳定现金流→DCF；盈利稳定的同业可比→PE；重资产/金融→
+#   PB 或 EV/EBITDA；亏损成长期→PS/用户价值，混用口径是常见错误；
+# - 研究规范精神：结论必须标注依据与来源分级，缺数据显式声明。
+# =============================================================================
+domain: investment_research_note
+version: "1.0.0"
+data_classification: internal
+
+input:
+  fields:
+    - {name: company, type: str, required: true, description: 标的公司}
+    - {name: filings_text, type: str, required: true, max: 40000, description: 财报/公告要点（含数字）}
+    - {name: industry_context, type: str, required: false, max: 20000, description: 行业动态/可比公司信息}
+    - {name: my_thesis, type: str, required: false, max: 5000, description: 待验证的投资逻辑（多空任一方向）}
+
+outputs:
+  note:
+    conclusion_enum: [thesis_supported, thesis_unclear, thesis_weakened]
+    fields:
+      - {name: bull_points, type: list, description: 支撑要点（附数据引用）}
+      - {name: bear_points, type: list, description: 反驳/风险要点（附数据引用）}
+      - {name: valuation_method_fit, type: str, description: 适用的估值方法及理由}
+      - {name: metrics_to_watch, type: list, description: 关键跟踪指标与触发阈值}
+
+preprocessor:
+  validators:
+    - {type: field_presence, fields: [company, filings_text]}
+
+skills:
+  - name: review_thesis
+    type: analysis
+    output: note
+    prompt: |
+      你是卖方研究助理（不构成投资建议）。标的：{{ input.company }}。
+      财报/公告要点：{{ input.filings_text }}
+      行业背景：{{ input.industry_context }}
+      待验证逻辑：{{ input.my_thesis }}
+
+      评审规则：
+      1. 对 my_thesis 做证据核查：每个 bull/bear point 必须引用输入中的具体数字，
+         不得使用输入之外的市场传闻（sources 分级：公告 L1 / 行业转述 L2）；
+      2. 盈利质量交叉验证：扣非净利 vs 经营现金流净额的背离要显式指出；
+      3. 商誉、应收增速与营收增速比、非经常性损益占比——任一异常写 bear_points；
+      4. valuation_method_fit 按公司特征推荐方法（DCF/PE/PB/EV-EBITDA/PS）
+         并说明为什么其他方法不适用；
+      5. metrics_to_watch 给出可观测阈值（如"经营现金流/净利 < 0.7 连续两季"）；
+      6. 输入数据不足以核查逻辑 → insufficient_data 并追问缺失的披露项；
+      7. 免责：compliance_tags 必须包含"研究辅助输出，不构成投资建议"。
+
+  - name: compliance_guard
+    type: audit
+    output: note
+    veto_when: "output.confidence != 'high'"
+    downgrade_to: thesis_unclear
+    confidence_after: medium
+
+falsification_checkers:
+  - {checker_id: filing_correction, when: "'更正' in input.filings_text"}
+  - {checker_id: annual_report_released, when: "'年度报告' in input.filings_text"}
+
+pipeline:
+  name: investment_research_note
+  domain: investment_research_note
+  version: "1.0.0"
+  steps:
+    - name: review_thesis
+      type: skill
+      skill: review_thesis
+      on_schema_fail: retry
+      max_retries: 2
+
+result_from: review_thesis

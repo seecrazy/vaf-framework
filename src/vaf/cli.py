@@ -442,10 +442,14 @@ def cmd_preset_install(args: argparse.Namespace) -> int:
     print("下一步：")
     print(f"  1. vaf run --domain {args.name} --input <你的输入.json>   # 配置真实 LLM 后即用")
     print(f"  2. 按需编辑阈值/提示词（文件头注释标注了知识依据与校准要求）")
-    src_dir = preset_path(args.name, args.presets_dir).parent
-    py_ref = src_dir / "python"
-    if py_ref.is_dir():
-        print(f"  3. 代码风格参考实现: {py_ref}")
+    from .presets import package_dir, preset_kind
+
+    if preset_kind(args.name, args.presets_dir) == "python":
+        print("  （Python 变体：包目录已复制，domains/ 自动发现后 import 即注册）")
+    else:
+        twin = package_dir(args.name, args.presets_dir)
+        if twin.is_dir():
+            print(f"  3. 代码风格参考实现: {twin}")
     return 0
 
 

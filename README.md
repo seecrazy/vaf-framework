@@ -1,4 +1,4 @@
-# VAF 2.3 — 垂直领域 Agent 通用可靠性框架
+# VAF 2.4 — 垂直领域 Agent 通用可靠性框架
 
 Vertical Agent Framework：为「结论可枚举、推理步骤可命名、输出可校验」的垂直领域（医疗分诊、投研、信贷审批、运维排障、工单质检……）提供**生产级可靠性骨架**。框架零领域知识；**接入一个领域可以只写一个 YAML 文件（V2.2 零代码路径），也可以用四层 Python API 做完整控制，两者可在同一 Pipeline 混用。**
 
@@ -13,7 +13,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
 
 vaf demo        # 离线演示：澄清回路 → 审核 → 路由探测 → 零代码领域 → 评估门禁
-pytest          # 196 个用例（~1s），零外部依赖
+pytest          # 202 个用例（~1s），零外部依赖
 ```
 
 ## 0 分钟使用：预置领域库（V2.3 推荐）
@@ -21,7 +21,7 @@ pytest          # 196 个用例（~1s），零外部依赖
 常用领域已预置（基于真实领域知识撰写，文件头标注知识依据与校准要求）：
 
 ```bash
-vaf preset list                        # credit_review / contract_risk_review / financial_report_extract
+vaf preset list                        # 信贷/合同/公告/法律诉讼/投资研究/SAP FICO 凭证 等 6 个预置
 vaf preset try credit_review           # 离线体验（样例输入，零外部依赖）
 vaf preset install credit_review       # 复制到 domains/ 即被自动发现 → 接真实 LLM 即用
 ```

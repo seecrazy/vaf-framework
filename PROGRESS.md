@@ -6,8 +6,8 @@
 
 | 维度 | 状态 |
 |---|---|
-| 版本 | **V2.3.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
-| 测试 | **196 passed（~1s）**，零外部依赖、离线确定性 |
+| 版本 | **V2.4.0**（框架版本常量 `vaf.runtime.FRAMEWORK_VERSION`） |
+| 测试 | **202 passed（~1s）**，零外部依赖、离线确定性 |
 | CLI | demo / run / inspect / review / clarify / eval / scaffold 全部可用 |
 | 示例领域 | medical_triage、ops_incident（均可离线跑通） |
 | 环境 | Python 3.12（uv 管理 venv），pydantic v2 / PyYAML / pytest |
@@ -68,6 +68,20 @@
   financial_report_extract（公告抽取，来源分级 + 数据缺口强制声明）；
 - CLI `vaf preset list/show/install/try`；
 - 测试 186 → **196**（目录完整性/三预置离线跑通/证伪触发/install/孪生包含人工审核路径）。
+
+
+### 2026-11-09（第五批）· V2.4.0 —— 预置库扩充：法律/投资/SAP FICO
+- legal_case_assessment 民商事案件评估：证据链核查（高度盖然性/举证责任）、时效风险
+  （民法典 188 条 3 年、劳动仲裁 1 年）、程序策略（保全/公告送达/成本比较），
+  输出强制"不构成法律意见"免责标签；
+- investment_research_note 投资研究要点评审：盈利质量交叉验证（扣非 vs 经营现金流）、
+  商誉/应收/非经常性损益风险信号、估值方法适配；合规红线内置（不做投资建议、
+  无目标价评级、强制免责标签、结论必须引用输入数据）；
+- sap_fico_journal_check（Python 变体）：借贷平衡跨行求和、损益科目 CO 分配
+  （KI235 类报错）、冲销 AB 证伪——演示"聚合计算超出声明式预处理→转代码"决策路径；
+- presets.py 支持 python 变体（preset_kind/package_dir、try 动态导入注册、
+  install 复制包目录、index 校验放宽）；
+- 测试 196 → **202**。
 
 ## 测试基线
 

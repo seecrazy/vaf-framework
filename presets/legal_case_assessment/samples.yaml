@@ -1,0 +1,94 @@
+# legal_case_assessment 预置领域离线样例（vaf preset try）
+inputs:
+  - name: 民间借贷（证据链较全，原告）
+    input:
+      raw_id: la-sample-1
+      source: law_firm_intake
+      timestamp: "2026-11-09T10:00:00"
+      case_facts: |
+        2024 年 3 月被告因经营周转向我方借款 80 万元，出具借条原件一张，
+        约定一年后归还并计年息 8%；当日我方通过银行转账交付全款（有转账回单）。
+        到期后被告仅归还 10 万元，2026 年 5 月起失联。我方拟起诉追讨本息。
+      case_type: loan_dispute
+      our_role: plaintiff
+      evidence_list: ["借条原件", "银行转账回单", "部分还款记录", "催款微信记录"]
+      dispute_amount: 700000
+      key_dates: {loan_date: "2024-03-10", due_date: "2025-03-10", last_contact_date: "2026-05-01"}
+
+  - name: 劳动争议（临近仲裁时效，需律师评估）
+    input:
+      raw_id: la-sample-2
+      source: law_firm_intake
+      timestamp: "2026-11-09T10:01:00"
+      case_facts: |
+        当事人称 2025 年 10 月被公司口头辞退，未出具解除证明，公司拖欠
+        最后一个月工资与未付加班费；当事人直到 2026 年 10 月中旬才考虑维权，
+        期间仅有一条与人事的微信沟通记录，无辞退书面证据。
+      case_type: labor_dispute
+      our_role: plaintiff
+      evidence_list: ["与人事的微信沟通记录（截图）", "工资银行流水"]
+      dispute_amount: 45000
+      key_dates: {termination_date: "2025-10-20", first_consult: "2026-10-15"}
+
+responses:
+  assess_case:
+    - |
+      {
+        "conclusion": "favorable",
+        "confidence": "high",
+        "cause_of_action_guess": "民间借贷纠纷",
+        "key_evidence_gaps": ["被告主体身份材料（需调取户籍/工商信息）"],
+        "strategy_suggestions": [
+          "起诉同时申请财产保全，防止转移财产",
+          "被告失联可申请公告送达，注意公告期间不计入答辩期扣减",
+          "诉讼费按标的额约 1 万余元，可与保全费一并主张由被告负担"
+        ],
+        "limitation_risk": "none",
+        "cost_benefit_note": "标的 70 万，预计一审诉讼费约 10800 元，比例可接受",
+        "findings": [
+          {"finding_id": "f1", "claim": "借贷合意（借条原件）与款项交付（转账回单）证据链完整", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "2026-05 主张权利，未超 3 年时效", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "出具借条原件一张，约定一年后归还并计年息 8%；当日我方通过银行转账交付全款", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "到期后被告仅归还 10 万元，2026 年 5 月起失联", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L2", "label": "当事人陈述（附书面证据索引）"}],
+        "falsification": [
+          {"signal": "被告提交新证据", "threshold": "出现还款凭证或已清偿证明", "consequence": "重新评估本息余额", "check_frequency": "event_driven", "checker_id": "new_evidence_submitted"}
+        ],
+        "compliance_tags": ["不构成法律意见，须经执业律师复核"],
+        "data_classification": "confidential"
+      }
+    - |
+      {
+        "conclusion": "needs_attorney_review",
+        "confidence": "medium",
+        "cause_of_action_guess": "劳动争议（追索劳动报酬/违法解除）",
+        "key_evidence_gaps": [
+          "解除事实证据不足（仅口头辞退+单条微信，无书面解除证明）",
+          "加班事实与加班费计算依据缺失",
+          "仲裁时效临近届满（1 年），需立即申请仲裁并主张时效中断事由"
+        ],
+        "strategy_suggestions": [
+          "立即申请劳动仲裁（时效仅剩约 1 周，主张微信沟通构成时效中断）",
+          "同步向劳动监察投诉拖欠工资，补强解除时间点证据",
+          "准备经济补偿与代通知金的备位主张"
+        ],
+        "limitation_risk": "critical",
+        "cost_benefit_note": "劳动仲裁不收费，成本主要为律师费与时间",
+        "findings": [
+          {"finding_id": "f1", "claim": "解除证据薄弱且仲裁时效临界", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "拖欠工资有银行流水佐证，胜算相对高", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "2025 年 10 月被公司口头辞退，未出具解除证明；直到 2026 年 10 月中旬才考虑维权", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "公司拖欠最后一个月工资", "source_ref": "s1"}
+        ],
+        "sources": [{"ref_id": "s1", "grade": "L2", "label": "当事人陈述"}],
+        "falsification": [
+          {"signal": "取得书面解除证明或新沟通记录", "threshold": "新证据提交", "consequence": "重新评估解除事实认定", "check_frequency": "event_driven", "checker_id": "new_evidence_submitted"}
+        ],
+        "compliance_tags": ["不构成法律意见，须经执业律师复核"],
+        "data_classification": "confidential"
+      }

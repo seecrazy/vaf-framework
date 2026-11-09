@@ -25,3 +25,31 @@ presets:
       定期报告法定披露格式准则；来源分级（公告原文 L1 / 转述 L2 / 传闻 L3）；
       业绩快报与正式年报口径差异。缺项不得推算，必须写 data_gaps。
     variants: [lowcode]
+
+  - name: legal_case_assessment
+    description: 民商事诉讼案件评估（证据链核查/时效风险/程序策略 + 胜诉倾向分级）
+    tags: [legal, litigation, assessment]
+    knowledge: |
+      民事证明标准"高度盖然性"与举证责任分配（最高法民事诉讼证据规定）、
+      民法典 188 条 3 年普通时效、劳动争议仲裁前置与 1 年时效（调解仲裁法
+      27 条）、财产保全/公告送达等程序选项。输出不构成法律意见，须执业律师复核。
+    variants: [lowcode]
+
+  - name: investment_research_note
+    description: 投资研究要点评审（盈利质量交叉验证/估值方法适配/风险信号，不构成投资建议）
+    tags: [investment, research, compliance]
+    knowledge: |
+      扣非净利与经营现金流匹配度交叉验证、商誉年度减值测试（CAS 8）、
+      应收增速与营收增速背离信号、DCF/PE/PB/EV-EBITDA/PS 适用边界。
+      合规设计：不做投资建议、不给目标价，输出强制携带免责标签。
+    variants: [lowcode]
+
+  - name: sap_fico_journal_check
+    description: SAP 总账凭证过账前检查（借贷平衡/损益科目 CO 分配 KI235/期间控制）
+    tags: [sap, fico, accounting, python]
+    knowledge: |
+      总账凭证借贷合计强制平衡；损益科目（示例区间 400000-499999，以 FS00
+      科目主数据为准）为初级成本要素时须携带成本对象，否则 KI235 报错；
+      冲销凭证类型 AB。跨行借贷求和超出声明式预处理能力 → 本预置为
+      Python 变体（自定义聚合校验节点的教学案例）。
+    variants: [python]

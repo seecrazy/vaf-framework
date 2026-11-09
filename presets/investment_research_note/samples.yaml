@@ -1,0 +1,105 @@
+# investment_research_note 预置领域离线样例（vaf preset try）
+inputs:
+  - name: 消费公司（现金流匹配、逻辑获支撑）
+    input:
+      raw_id: iv-sample-1
+      source: research_intake
+      timestamp: "2026-11-09T10:00:00"
+      company: 示例消费（603001）
+      filings_text: |
+        2026 年三季报：营收 45.2 亿元（+11.2%），归母净利 6.8 亿元（+13.5%），
+        扣非净利 6.5 亿元（+12.8%）；经营现金流净额 7.4 亿元；
+        应收账款 1.9 亿元（去年同期 1.7 亿元）；商誉 0.3 亿元；无有息负债。
+      industry_context: 高端白酒库存去化接近尾声，行业批价企稳。
+      my_thesis: 公司盈利质量扎实，现金流优于账面利润，业绩可持续性强。
+
+  - name: 并购后遗症公司（商誉高企+现金流背离，逻辑被削弱）
+    input:
+      raw_id: iv-sample-2
+      source: research_intake
+      timestamp: "2026-11-09T10:01:00"
+      company: 示例科技（300002）
+      filings_text: |
+        2026 年三季报：营收 18.6 亿元（+24.0%），归母净利 2.1 亿元（+18.0%），
+        扣非净利 1.2 亿元（-6.0%）；经营现金流净额 0.6 亿元；
+        应收账款 7.8 亿元（去年同期 4.1 亿元）；商誉 14.2 亿元（占总资产 38%）；
+        投资收益（处置子公司股权）0.8 亿元。更正公告：此前披露的应收账款
+        坏账计提口径有误，已更正。
+      industry_context: 下游运营商资本开支收紧，行业招标价格战。
+      my_thesis: 公司收入高增长驱动业绩持续超预期。
+
+responses:
+  review_thesis:
+    - |
+      {
+        "conclusion": "thesis_supported",
+        "confidence": "high",
+        "bull_points": [
+          "扣非净利 6.5 亿与经营现金流 7.4 亿匹配良好（现金/利润 > 1.1）",
+          "应收增速（+11.8%）低于营收增速（+11.2%→ 基本同步），无渠道压货迹象",
+          "无有息负债，商誉占比极低（0.3 亿）"
+        ],
+        "bear_points": [
+          "行业批价企稳仍需验证，提价能力待年报确认"
+        ],
+        "valuation_method_fit": "盈利稳定且现金流可预测，适用 DCF 与同业 PE 交叉验证；重资产占比低，PB 不适用",
+        "metrics_to_watch": [
+          "经营现金流/净利 < 0.9 连续两季",
+          "批价环比下跌 > 5%"
+        ],
+        "findings": [
+          {"finding_id": "f1", "claim": "盈利质量：现金流覆盖扣非利润", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "资产负债表干净：无有息负债、商誉低", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "扣非净利 6.5 亿元；经营现金流净额 7.4 亿元", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "商誉 0.3 亿元；无有息负债", "source_ref": "s1"}
+        ],
+        "sources": [
+          {"ref_id": "s1", "grade": "L1", "label": "公司三季报"},
+          {"ref_id": "s2", "grade": "L2", "label": "行业动态转述"}
+        ],
+        "falsification": [
+          {"signal": "年报现金流恶化", "threshold": "经营现金流/净利 < 0.9 连续两季", "consequence": "盈利质量逻辑失效", "check_frequency": "event_driven"},
+          {"signal": "更正公告", "threshold": "披露口径更正", "consequence": "重算全部比率", "check_frequency": "realtime", "checker_id": "filing_correction"}
+        ],
+        "compliance_tags": ["研究辅助输出，不构成投资建议"],
+        "data_classification": "internal"
+      }
+    - |
+      {
+        "conclusion": "thesis_weakened",
+        "confidence": "high",
+        "bull_points": [
+          "营收 +24% 表观增速仍高"
+        ],
+        "bear_points": [
+          "扣非净利 -6.0% 与营收 +24% 严重背离，增长质量差",
+          "经营现金流 0.6 亿 vs 净利 2.1 亿（覆盖率 0.29），盈利未转化为现金",
+          "应收账款 7.8 亿，同比 +90%，远超营收增速，存在放宽信用或提前确认风险",
+          "商誉 14.2 亿占总资产 38%，业绩承诺若不达标面临减值",
+          "非经常性损益（处置股权 0.8 亿）撑起表观利润"
+        ],
+        "valuation_method_fit": "扣非口径盈利为负增长且现金流不稳，DCF 假设不可靠；适用 PS 与 EV/EBITDA，PE 会高估",
+        "metrics_to_watch": [
+          "应收/营收 > 0.5 或应收增速 > 营收增速 2 倍",
+          "商誉减值测试公告",
+          "扣非净利连续两季负增长"
+        ],
+        "findings": [
+          {"finding_id": "f1", "claim": "收入高增长未转化为现金与扣非利润", "evidence_refs": ["ev1"]},
+          {"finding_id": "f2", "claim": "商誉与应收双高风险", "evidence_refs": ["ev2"]}
+        ],
+        "evidence": [
+          {"ev_id": "ev1", "content": "营收 18.6 亿（+24.0%），扣非净利 1.2 亿（-6.0%）；经营现金流净额 0.6 亿", "source_ref": "s1"},
+          {"ev_id": "ev2", "content": "应收账款 7.8 亿元（去年同期 4.1 亿元）；商誉 14.2 亿元（占总资产 38%）", "source_ref": "s1"}
+        ],
+        "sources": [
+          {"ref_id": "s1", "grade": "L1", "label": "公司三季报及更正公告"}
+        ],
+        "falsification": [
+          {"signal": "更正公告再次出现", "threshold": "披露口径再更正", "consequence": "重算比率并复核应收真实性", "check_frequency": "realtime", "checker_id": "filing_correction"}
+        ],
+        "compliance_tags": ["研究辅助输出，不构成投资建议"],
+        "data_classification": "internal"
+      }

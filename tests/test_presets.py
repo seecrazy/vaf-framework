@@ -26,10 +26,12 @@ def test_index_lists_all_presets_with_knowledge():
     entries = load_index()
     names = {e["name"] for e in entries}
     assert {"credit_review", "contract_risk_review", "financial_report_extract"} <= names
+    from vaf.presets import preset_kind
+
     for entry in entries:
         assert entry["description"]
         assert entry.get("knowledge", "").strip(), f"{entry['name']} 缺少知识依据声明"
-        assert preset_path(entry["name"]).exists()
+        preset_kind(entry["name"])  # lowcode 或 python，二者必居其一
 
 
 def test_presets_dir_resolved():
@@ -189,3 +191,73 @@ def test_python_twin_high_amount_triggers_human_review():
     assert h.result["conclusion"] == "pre_approved"
     state = app.state_store.get("py-twin-2")
     assert state.step_states["high_amount_review"].status.value == "succeeded"
+
+
+# ---------------------------------------------------------------- V2.4 新预置
+def test_index_contains_six_presets():
+    names = {e["name"] for e in load_index()}
+    assert {
+        "legal_case_assessment",
+        "investment_research_note",
+        "sap_fico_journal_check",
+    } <= names
+
+
+def test_legal_case_assessment_preset_runs_offline():
+    results = try_preset("legal_case_assessment")
+    loan, labor = results
+    assert loan[1].result["conclusion"] == "favorable"
+    assert loan[1].result["limitation_risk"] == "none"
+    assert any("保全" in s for s in loan[1].result["strategy_suggestions"])
+    assert labor[1].result["conclusion"] == "needs_attorney_review"
+    assert labor[1].result["limitation_risk"] == "critical"  # 仲裁时效临界
+    # 免责标签随输出强制携带
+    assert any("不构成法律意见" in t for t in loan[1].result["compliance_tags"])
+
+
+def test_investment_research_note_preset_runs_offline():
+    results = try_preset("investment_research_note")
+    solid, weak = results
+    assert solid[1].result["conclusion"] == "thesis_supported"
+    assert solid[1].result["metrics_to_watch"]
+    assert weak[1].result["conclusion"] == "thesis_weakened"
+    bear_text = " ".join(map(str, weak[1].result["bear_points"]))
+    assert "商誉" in bear_text and "应收" in bear_text
+    # 输入含"更正"→ 证伪回检触发（处置闭环入口留痕）
+    assert weak[1].falsification_flags
+    # 合规免责强制标签
+    assert any("不构成投资建议" in t for t in solid[1].result["compliance_tags"])
+
+
+def test_sap_fico_preset_python_variant_runs_offline():
+    results = try_preset("sap_fico_journal_check")
+    ok, imbalanced, missing_co = results
+    assert ok[1].result["conclusion"] == "valid"
+    assert imbalanced[1].result["conclusion"] == "rejected"
+    assert imbalanced[1].result["imbalance_amount"] == 100.0
+    assert missing_co[1].result["conclusion"] == "rejected"
+    assert any("KI235" in c for c in missing_co[1].result["co_issues"])
+    # 预处理聚合校验确实发生（跨行求和是自定义节点完成）
+    state_ok = None  # try 内部 app 不外露，间接断言结论已含差额即可
+
+
+def test_preset_kind_detection():
+    from vaf.presets import package_dir, preset_kind
+
+    assert preset_kind("credit_review") == "lowcode"
+    assert preset_kind("sap_fico_journal_check") == "python"
+    from vaf.presets import presets_dir as _pd
+    assert (_pd() / "credit_review" / "credit_review_python").is_dir()  # 孪生包（命名含后缀）
+
+
+def test_install_python_variant_via_discovery(tmp_path):
+    from vaf.runtime.discovery import register_discovered
+
+    dest = install_preset("sap_fico_journal_check", target_dir=str(tmp_path))
+    assert (dest / "__init__.py").exists()
+    app = VafApp()
+    app.register_model_endpoint(
+        "m", ScriptedMockLLM(name="m", responder=lambda *a, **k: "{}"), tier=1
+    )
+    registered = register_discovered(app, dirs=[str(tmp_path)], include_entrypoints=False)
+    assert "sap_fico_journal_check" in registered
